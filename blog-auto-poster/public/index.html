@@ -117,7 +117,7 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 let geo = 'KR', concept = 'deep', keywords = [], remain = 1800, previewMobile = true;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong style="background:linear-gradient(transparent 58%,#fbcfe8 58%);color:#333333;font-weight:800;">$1</strong>');
+const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong style="background-color:#fbcfe8;color:#333333;font-weight:800;padding:0 3px;">$1</strong>');
 
 /* ---------- 트렌드 ---------- */
 async function loadTrends() {
@@ -177,17 +177,18 @@ function imagePrompt(scene, thumb) {
 /* ---------- 티스토리용 본문 HTML (인라인 스타일, PC+모바일 공용) ---------- */
 function buildPostHTML(d, forPreview) {
   const P = '#be185d', T = '#333333', G = '#475569', LINE = '#f9d0e3';
-  const p = (t) => `<p style="font-size:16px;line-height:1.9;color:${T};margin:0 0 16px;word-break:keep-all;">${rich(t)}</p>`;
+  const p = (t) => `<div style="font-size:16px;line-height:1.9;color:${T};margin:0;padding:0 0 18px;word-break:keep-all;">${rich(t)}</div>`;
   const clean = (x) => String(x || '').replace(/^[\s\d❶-❿①-⑩.)\-:·]+/, '');
   const row = (n, title, desc) => `<div style="display:flex;align-items:flex-start;gap:14px;background:#ffffff;border:1px solid ${LINE};border-radius:14px;padding:14px 16px;margin:0 0 10px;">
 <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:${P};color:#ffffff;font-size:14px;font-weight:800;text-align:center;line-height:30px;">${n}</div>
 <div style="flex:1;min-width:0;"><div style="font-size:16px;line-height:1.5;font-weight:800;color:${T};word-break:keep-all;">${rich(title)}</div>${desc ? `<div style="font-size:14px;line-height:1.6;color:${G};margin-top:3px;word-break:keep-all;">${rich(desc)}</div>` : ''}</div></div>`;
-  let h = '';
+  const marker = (t) => `<div style="text-align:center;font-size:14px;font-weight:700;color:${P};padding:4px 0 22px;">${t}</div>\n`;
+  let h = marker('📷 [대표 썸네일 이미지 삽입 위치] 이미지를 넣고 이 줄은 삭제하세요');
 
   // 1) 줄거리
   h += `<div style="background:#fdf2f8;border-left:5px solid ${P};border-radius:14px;padding:22px 24px;margin:0 0 24px;">
 <strong style="font-size:17px;color:${P};display:block;margin-bottom:8px;">📖 이 글의 줄거리</strong>
-<p style="font-size:15px;line-height:1.8;color:${G};margin:0;word-break:keep-all;">${rich(d.summary)}</p></div>\n`;
+<div style="font-size:15px;line-height:1.8;color:${G};margin:0;word-break:keep-all;">${rich(d.summary)}</div></div>\n`;
 
   // 2) 3초 요약: 소제목 한눈에 보기
   if (d.sections?.length) {
@@ -204,7 +205,7 @@ ${d.sections.map((s, i) => row(i + 1, clean(s.heading), s.oneLine)).join('')}</d
 <div style="font-size:23px;line-height:1.45;font-weight:900;color:${T};margin-top:12px;word-break:keep-all;">${esc(s.icon || '')} ${esc(clean(s.heading))}</div></div>
 <div style="background:#f8fafc;padding:16px 24px;font-size:16px;line-height:1.6;font-weight:800;color:${P};word-break:keep-all;">💡 ${rich(s.oneLine)}</div></div>\n`;
 
-    h += forPreview ? '' : `<!-- 소제목 ${i + 1} 이미지 위치 -->\n`;
+    h += marker(`📷 [소제목 ${i + 1} 이미지 삽입 위치] 이미지를 넣고 이 줄은 삭제하세요`);
 
     const kps = (s.keyPoints || []).map((k) => (typeof k === 'string' ? { title: k, desc: '' } : k));
     if (kps.length) {
@@ -248,7 +249,7 @@ ${d.checklist.map((c) => `<div style="font-size:15px;line-height:1.8;color:${T};
   // 5) 마무리 인사
   h += `<div style="background:#fdf2f8;border:1px solid ${LINE};border-radius:16px;padding:26px;margin:48px 0 8px;text-align:center;">
 <div style="font-size:18px;font-weight:800;color:${P};margin-bottom:10px;">💌 마무리 인사</div>
-<p style="font-size:15px;line-height:1.9;color:${G};margin:0;word-break:keep-all;">${rich(d.closing)}</p></div>\n`;
+<div style="font-size:15px;line-height:1.9;color:${G};margin:0;word-break:keep-all;">${rich(d.closing)}</div></div>\n`;
   return h;
 }
 
@@ -261,10 +262,11 @@ async function copy(text, btn) {
 
 /* ---------- 결과 렌더 ---------- */
 let current = null, currentHTML = '';
-function promptBlock(label, scene, thumb, id) {
+function promptBlock(label, scene, thumb, id, where) {
   const text = imagePrompt(scene, thumb);
   return `<div class="prompt" id="pr-${id}"><div class="top"><span>✨ ${esc(label)}</span>
 <button class="mini pink" data-copy="${esc(text)}">프롬프트 복사</button></div>
+<div class="sub" style="margin-top:6px">📍 ${esc(where || '')}</div>
 <button class="link" data-toggle="pr-${id}">프롬프트 내용 보기</button><pre>${esc(text)}</pre></div>`;
 }
 function renderResult(d, count) {
@@ -288,9 +290,10 @@ function renderResult(d, count) {
 
   <div class="imgbox" style="margin-bottom:18px">
     <h3 style="color:#831843;font-size:15px">🎨 추천 이미지 가이드 (제미나이 전용)</h3>
-    ${promptBlock('[대표 썸네일] 이미지 프롬프트', d.thumbnailScene || d.titles[0], true, 'thumb')}
+    <div class="sub" style="color:#9d174d">본문 코드에 <b>📷 [이미지 삽입 위치]</b> 줄이 있어요. 그 자리에 이미지를 넣고 안내 줄은 지워 주세요.</div>
+    ${promptBlock('[대표 썸네일] 이미지 프롬프트', d.thumbnailScene || d.titles[0], true, 'thumb', '넣을 위치: 글 맨 위 📷 표시 (티스토리 대표 이미지로도 설정)')}
     <div style="margin:16px 0 0;font-size:13px;font-weight:800;color:#831843">📌 소제목별 이미지</div>
-    ${d.sections.map((s, i) => promptBlock(`소제목 ${i + 1}: ${s.heading}`, s.imageScene || s.heading, false, i)).join('')}
+    ${d.sections.map((s, i) => promptBlock(`소제목 ${i + 1}: ${s.heading}`, s.imageScene || s.heading, false, i, `넣을 위치: 본문 ${i + 1}번 소제목 카드 바로 아래 📷 표시`)).join('')}
   </div>
 
   <div class="sec-title"><h3 style="margin:0">📖 본문 HTML 코드 <span class="sub">(티스토리 HTML 모드에 붙여넣기)</span></h3><button class="mini" id="copyHtml">코드 복사</button></div>
