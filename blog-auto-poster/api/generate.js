@@ -2,18 +2,19 @@
 // API 키는 Vercel 환경변수(GEMINI_API_KEY)에만 보관됩니다.
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const MIN_CHARS = 1500; // 본문 최소 글자 수(공백 제외)
 const OUTPUT_LANG = '한국어'; // 모든 국가 탭에서 글은 한국어로 작성 (필요하면 여기서 변경)
 
 const CONCEPTS = {
   deep: {
     name: '심층 분석형',
     guide:
-      '깊이 있는 정보 가이드. 각 소제목 본문은 3~4개 문단, 문단당 3~4문장으로 충실하게 작성. 배경·원인·방법·주의점을 논리적으로 설명.',
+      '깊이 있는 정보 가이드. 각 소제목 본문은 3~4개 문단, 문단당 3~4문장으로 충실하게 작성(소제목당 450자 이상). 배경·원인·방법·주의점을 논리적으로 설명.',
   },
   summary: {
     name: '핵심 요약형',
     guide:
-      '바쁜 현대인을 위한 요약형. 각 소제목 본문은 1~2개의 짧은 문단으로 간결하게, 대신 keyPoints를 명확하고 구체적으로 작성.',
+      '바쁜 현대인을 위한 요약형. 문장은 짧고 읽기 쉽게 쓰되, 각 소제목 본문은 2~3개 문단(소제목당 300자 이상)으로 작성하고 keyPoints를 명확하고 구체적으로 작성.',
   },
   review: {
     name: '친근한 후기형',
@@ -23,11 +24,15 @@ const CONCEPTS = {
   compare: {
     name: '정보 비교형',
     guide:
-      '장단점 비교 중심. 반드시 comparisonTable(비교표)과 checklist(체크리스트)를 채울 것. 소제목 본문은 2문단 정도로 비교 기준과 선택 팁을 설명.',
+      '장단점 비교 중심. 반드시 comparisonTable(비교표)과 checklist(체크리스트)를 채울 것. 소제목 본문은 2~3문단(소제목당 300자 이상)으로 비교 기준과 선택 팁을 설명.',
   },
 };
 
-function buildPrompt({ keyword, concept, today }) {
+function bodyLength(d) {
+  return (d.sections || []).reduce((n, s) => n + (s.body || []).join('').replace(/\s/g, '').length, 0);
+}
+
+function buildPrompt({ keyword, concept, today, retryNote }) {
   const c = CONCEPTS[concept] || CONCEPTS.deep;
   return `당신은 구글 SEO에 능숙한 티스토리 블로거입니다. 아래 키워드로 블로그 포스팅을 작성하세요.
 
@@ -41,9 +46,12 @@ function buildPrompt({ keyword, concept, today }) {
 [글 구조 - 기승전결]
 - summary: 포스팅 전체의 줄거리를 3~4문장으로 (글의 시작 부분에 놓임)
 - sections: 정확히 5개. 순서와 role은 기(도입·문제제기) → 승(핵심 정보 전개) → 승(심화·구체적 방법) → 전(반전·주의점·흔한 실수) → 결(정리·실행 가이드).
-- 각 소제목은 한눈에 내용을 알 수 있게 구체적으로, oneLine은 그 소제목의 핵심을 한 줄로 요약(카드뉴스 문구처럼).
+- heading(소제목)에는 '기·승·전·결' 같은 단어나 번호(1., ❶ 등)를 절대 넣지 말고, 한눈에 내용을 알 수 있게 구체적으로 쓸 것. oneLine은 그 소제목의 핵심을 한 줄로 요약(카드뉴스 문구처럼).
 - qna: 독자가 실제로 궁금해할 질문 3~4개와 답변 (이목을 끄는 질문형)
 - closing: 블로그 마무리 인사 2~3문장 (공감·감사, 다음 글 예고 느낌)
+[분량 - 반드시 지킬 것]
+- sections의 body 문단 전체 합계가 공백 제외 1,500자 이상(권장 2,000~2,500자). 소제목 하나당 최소 300자 이상.
+- keyPoints, qna, summary, closing 글자 수는 이 합계에 포함되지 않음. 내용을 늘릴 때는 같은 말을 반복하지 말고 구체적인 설명·예시·주의점으로 채울 것.
 [SEO]
 - 제목 5개는 클릭을 부르되 과장·낚시 금지, 핵심 키워드를 앞쪽에 포함. 본문 첫 문단과 소제목에도 키워드를 자연스럽게 포함.
 - meta는 120자 안팎의 메타 설명.
@@ -76,7 +84,7 @@ function buildPrompt({ keyword, concept, today }) {
   "qna": [{ "q": "질문", "a": "답변" }],
   "closing": "마무리 인사"
 }
-- comparisonTable과 checklist는 '정보 비교형'일 때만 채우고, 다른 컨셉에서는 null로 두세요.`;
+- comparisonTable과 checklist는 '정보 비교형'일 때만 채우고, 다른 컨셉에서는 null로 두세요.${retryNote ? '\n\n[재작성 요청] ' + retryNote : ''}`;
 }
 
 function parseJson(text) {
@@ -120,34 +128,54 @@ module.exports = async (req, res) => {
 
   const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric' });
 
-  try {
+  async function callGemini(retryNote) {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today }) }] }],
-          generationConfig: { temperature: 0.8, responseMimeType: 'application/json', maxOutputTokens: 8192 },
+          contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today, retryNote }) }] }],
+          generationConfig: { temperature: 0.8, responseMimeType: 'application/json', maxOutputTokens: 16384 },
         }),
       }
     );
-
     if (r.status === 429) {
-      return res.status(429).json({ error: '무료 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.' });
+      const err = new Error('무료 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.');
+      err.status = 429;
+      throw err;
     }
     if (!r.ok) {
       const t = await r.text();
-      return res.status(502).json({ error: `Gemini 오류 (${r.status}): ${t.slice(0, 200)}` });
+      const err = new Error(`Gemini 오류 (${r.status}): ${t.slice(0, 200)}`);
+      err.status = 502;
+      throw err;
     }
-
     const j = await r.json();
     const text = j?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-    if (!text) return res.status(502).json({ error: 'AI가 빈 응답을 보냈어요. 다시 시도해 주세요.' });
+    if (!text) {
+      const err = new Error('AI가 빈 응답을 보냈어요. 다시 시도해 주세요.');
+      err.status = 502;
+      throw err;
+    }
+    return validate(parseJson(text));
+  }
 
-    const data = validate(parseJson(text));
-    return res.status(200).json({ data, keyword: kw, concept });
+  try {
+    let data = await callGemini('');
+    let count = bodyLength(data);
+    if (count < MIN_CHARS) {
+      // 1500자 미만이면 한 번 더 길게 다시 작성
+      try {
+        const again = await callGemini(
+          `이전 결과는 본문이 약 ${count}자로 부족했습니다. 각 소제목 본문을 더 구체적으로 풍부하게 써서 합계 2,000자 이상으로 다시 작성하세요.`
+        );
+        const c2 = bodyLength(again);
+        if (c2 > count) { data = again; count = c2; }
+      } catch (e) { /* 재시도 실패 시 첫 결과 사용 */ }
+    }
+    return res.status(200).json({ data, keyword: kw, concept, charCount: count });
   } catch (e) {
-    return res.status(500).json({ error: e.message || '생성 중 오류가 발생했어요.' });
+    return res.status(e.status || 500).json({ error: e.message || '생성 중 오류가 발생했어요.' });
   }
 };
