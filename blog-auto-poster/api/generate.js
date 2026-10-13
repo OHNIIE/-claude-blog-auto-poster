@@ -3,6 +3,48 @@
 
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const MIN_CHARS = 1500; // 본문 최소 글자 수(공백 제외)
+const STR = { type: 'STRING' };
+const ARR = (items, extra = {}) => ({ type: 'ARRAY', items, ...extra });
+const SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    titles: ARR(STR),
+    meta: STR,
+    tags: ARR(STR),
+    summary: STR,
+    thumbnailScene: STR,
+    sections: ARR({
+      type: 'OBJECT',
+      properties: {
+        role: STR, icon: STR, heading: STR, oneLine: STR,
+        body: ARR(STR),
+        keyPoints: ARR({ type: 'OBJECT', properties: { title: STR, desc: STR }, required: ['title', 'desc'] }),
+        tip: STR, imageScene: STR,
+      },
+      required: ['heading', 'oneLine', 'body', 'keyPoints', 'tip', 'imageScene'],
+    }),
+    comparisonTable: {
+      type: 'OBJECT', nullable: true,
+      properties: {
+        headers: ARR(STR),
+        rows: ARR({ type: 'OBJECT', properties: { cells: ARR(STR) }, required: ['cells'] }),
+      },
+      required: ['headers', 'rows'],
+    },
+    checklist: ARR(STR, { nullable: true }),
+    qna: ARR({ type: 'OBJECT', properties: { q: STR, a: STR }, required: ['q', 'a'] }),
+    closing: STR,
+  },
+  required: ['titles', 'meta', 'tags', 'summary', 'thumbnailScene', 'sections', 'qna', 'closing'],
+};
+
+function normalize(d) {
+  if (d.comparisonTable && Array.isArray(d.comparisonTable.rows)) {
+    d.comparisonTable.rows = d.comparisonTable.rows.map((r) => (Array.isArray(r) ? r : r?.cells || []));
+  }
+  return d;
+}
+
 const OUTPUT_LANG = '한국어'; // 모든 국가 탭에서 글은 한국어로 작성 (필요하면 여기서 변경)
 
 const CONCEPTS = {
@@ -88,7 +130,7 @@ function buildPrompt({ keyword, concept, today, retryNote }) {
       "imageScene": "이 소제목 장면 묘사"
     }
   ],
-  "comparisonTable": { "headers": ["항목","A","B"], "rows": [["...","...","..."]] },
+  "comparisonTable": { "headers": ["항목","A","B"], "rows": [{ "cells": ["...","...","..."] }] },
   "checklist": ["체크 항목1", "체크 항목2"],
   "qna": [{ "q": "질문", "a": "답변" }],
   "closing": "마무리 인사"
@@ -137,7 +179,7 @@ module.exports = async (req, res) => {
 
   const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric' });
 
-  async function callGemini(retryNote) {
+  async function callGemini(retryNote, useSchema = true) {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
       {
@@ -145,7 +187,12 @@ module.exports = async (req, res) => {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today, retryNote }) }] }],
-          generationConfig: { temperature: 0.8, responseMimeType: 'application/json', maxOutputTokens: 16384 },
+          generationConfig: {
+            temperature: 0.7,
+            responseMimeType: 'application/json',
+            maxOutputTokens: 16384,
+            ...(useSchema ? { responseSchema: SCHEMA } : {}),
+          },
         }),
       }
     );
@@ -154,6 +201,7 @@ module.exports = async (req, res) => {
       err.status = 429;
       throw err;
     }
+    if (r.status === 400 && useSchema) return callGemini(retryNote, false); // 스키마를 거부하면 스키마 없이 재시도
     if (!r.ok) {
       const t = await r.text();
       const err = new Error(`Gemini 오류 (${r.status}): ${t.slice(0, 200)}`);
@@ -167,11 +215,29 @@ module.exports = async (req, res) => {
       err.status = 502;
       throw err;
     }
-    return validate(parseJson(text));
+    let parsed;
+    try {
+      parsed = parseJson(text);
+    } catch (e) {
+      const err = new Error('AI 응답 형식이 잠깐 깨졌어요. 다시 한 번 눌러 주세요.');
+      err.status = 502;
+      err.parse = true;
+      throw err;
+    }
+    return normalize(validate(parsed));
+  }
+
+  async function callWithRetry(note) {
+    try {
+      return await callGemini(note);
+    } catch (e) {
+      if (e.parse) return await callGemini(note); // 형식 오류는 자동으로 한 번 더
+      throw e;
+    }
   }
 
   try {
-    let data = await callGemini('');
+    let data = await callWithRetry('');
     let count = bodyLength(data);
     if (count < MIN_CHARS) {
       // 1500자 미만이면 한 번 더 길게 다시 작성
