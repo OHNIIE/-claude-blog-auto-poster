@@ -117,7 +117,7 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 let geo = 'KR', concept = 'deep', keywords = [], remain = 1800, previewMobile = true;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong style="color:#be185d;">$1</strong>');
+const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong style="background:linear-gradient(transparent 58%,#fbcfe8 58%);color:#333333;font-weight:800;">$1</strong>');
 
 /* ---------- 트렌드 ---------- */
 async function loadTrends() {
@@ -167,70 +167,88 @@ function imagePrompt(scene, thumb) {
   return `흰색(#FFFFFF) 단색 배경의 깔끔한 2D 일러스트를 그려줘.
 주제: ${scene}
 - 친근하고 귀여운 일러스트풍의 한국 여성 캐릭터가 주제를 상징하는 소품과 함께 등장
+- 구도(가장 중요): 캐릭터와 핵심 소품 전체를 이미지 정중앙에 배치하고 좌우·상하 여백을 대칭으로 맞추기. 한쪽으로 치우치면 안 됨
+- 모든 요소가 프레임 안에 온전히 들어와야 하고(잘림 금지), 네 가장자리 모두 흰 여백을 충분히(각 15% 이상) 남기기
 - 색감은 핑크(#be185d 계열), 블랙, 그레이 톤으로 통일
 - 이미지 안에 글자·숫자·로고·워터마크는 넣지 않기
-- 우측 하단 모서리는 완전히 비워두기 (여백 유지)
-- 비율은 ${thumb ? '16:9 가로형' : '4:3 가로형'}, 캐릭터와 핵심 소품은 중앙~좌측 중심 구도`;
+- 비율은 ${thumb ? '16:9 가로형' : '4:3 가로형'}`;
 }
 
 /* ---------- 티스토리용 본문 HTML (인라인 스타일, PC+모바일 공용) ---------- */
 function buildPostHTML(d, forPreview) {
-  const P = '#be185d', INK = '#0f172a', G = '#475569';
-  const p = (t) => `<p style="font-size:16px;line-height:1.9;color:#334155;margin:0 0 18px;word-break:keep-all;">${rich(t)}</p>`;
+  const P = '#be185d', T = '#333333', G = '#475569', LINE = '#f9d0e3';
+  const p = (t) => `<p style="font-size:16px;line-height:1.9;color:${T};margin:0 0 16px;word-break:keep-all;">${rich(t)}</p>`;
+  const clean = (x) => String(x || '').replace(/^[\s\d❶-❿①-⑩.)\-:·]+/, '');
+  const row = (n, title, desc) => `<div style="display:flex;align-items:flex-start;gap:14px;background:#ffffff;border:1px solid ${LINE};border-radius:14px;padding:14px 16px;margin:0 0 10px;">
+<div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:${P};color:#ffffff;font-size:14px;font-weight:800;text-align:center;line-height:30px;">${n}</div>
+<div style="flex:1;min-width:0;"><div style="font-size:16px;line-height:1.5;font-weight:800;color:${T};word-break:keep-all;">${rich(title)}</div>${desc ? `<div style="font-size:14px;line-height:1.6;color:${G};margin-top:3px;word-break:keep-all;">${rich(desc)}</div>` : ''}</div></div>`;
   let h = '';
 
   // 1) 줄거리
-  h += `<div style="background:#fdf2f8;border-left:5px solid ${P};border-radius:14px;padding:22px 24px;margin:0 0 36px;">
+  h += `<div style="background:#fdf2f8;border-left:5px solid ${P};border-radius:14px;padding:22px 24px;margin:0 0 24px;">
 <strong style="font-size:17px;color:${P};display:block;margin-bottom:8px;">📖 이 글의 줄거리</strong>
 <p style="font-size:15px;line-height:1.8;color:${G};margin:0;word-break:keep-all;">${rich(d.summary)}</p></div>\n`;
 
-  // 2) 소제목 1~5 (카드뉴스형)
+  // 2) 3초 요약: 소제목 한눈에 보기
+  if (d.sections?.length) {
+    h += `<div style="background:#f8fafc;border:1px solid ${LINE};border-radius:16px;padding:20px 18px 10px;margin:0 0 40px;">
+<div style="font-size:17px;font-weight:800;color:${T};margin:0 0 14px 4px;">📌 3초 요약 <span style="color:${P};">이 글의 핵심 ${d.sections.length}가지</span></div>
+${d.sections.map((s, i) => row(i + 1, clean(s.heading), s.oneLine)).join('')}</div>\n`;
+  }
+
+  // 3) 소제목 1~5 (카드뉴스형: 헤더 → 핵심 포인트 카드 → 상세 본문 → 팁)
   (d.sections || []).forEach((s, i) => {
-    const heading = String(s.heading || '').replace(/^[\s\d❶-❿①-⑩.)\-:·]+/, '');
-    h += `<div style="margin:44px 0 22px;border:1px solid #f9d0e3;border-radius:16px;overflow:hidden;">
-<div style="background:#fce7f3;padding:20px 24px;">
-<span style="display:inline-block;background:${P};color:#fff;font-size:13px;font-weight:700;border-radius:99px;padding:3px 13px;">${i + 1}</span>
-<div style="font-size:21px;line-height:1.45;font-weight:800;color:#831843;margin-top:10px;word-break:keep-all;">${esc(s.icon || '')} ${esc(heading)}</div></div>
-<div style="background:#f8fafc;padding:14px 24px;font-size:15px;line-height:1.6;font-weight:700;color:${P};word-break:keep-all;">💡 ${rich(s.oneLine)}</div></div>\n`;
+    h += `<div style="margin:52px 0 20px;border:1px solid ${LINE};border-radius:16px;overflow:hidden;">
+<div style="background:#fce7f3;padding:22px 24px;border-bottom:3px solid ${P};">
+<span style="display:inline-block;background:${P};color:#ffffff;font-size:14px;font-weight:800;border-radius:99px;padding:3px 15px;">${i + 1}</span>
+<div style="font-size:23px;line-height:1.45;font-weight:900;color:${T};margin-top:12px;word-break:keep-all;">${esc(s.icon || '')} ${esc(clean(s.heading))}</div></div>
+<div style="background:#f8fafc;padding:16px 24px;font-size:16px;line-height:1.6;font-weight:800;color:${P};word-break:keep-all;">💡 ${rich(s.oneLine)}</div></div>\n`;
 
     h += forPreview ? '' : `<!-- 소제목 ${i + 1} 이미지 위치 -->\n`;
 
-    (s.body || []).forEach((t) => (h += p(t) + '\n'));
-
-    if (s.keyPoints?.length) {
-      h += `<div style="background:#f1f5f9;border-radius:14px;padding:18px 22px;margin:0 0 20px;">
-<strong style="font-size:14px;color:${INK};display:block;margin-bottom:8px;">✔ 핵심 포인트</strong>
-${s.keyPoints.map((k) => `<div style="font-size:15px;line-height:1.7;color:${G};padding:3px 0;word-break:keep-all;"><span style="color:${P};font-weight:800;">•</span> ${rich(k)}</div>`).join('')}</div>\n`;
+    const kps = (s.keyPoints || []).map((k) => (typeof k === 'string' ? { title: k, desc: '' } : k));
+    if (kps.length) {
+      h += `<div style="background:#f8fafc;border-radius:16px;padding:18px 16px 8px;margin:0 0 26px;">
+<div style="font-size:14px;font-weight:800;color:${P};margin:0 0 12px 4px;">✔ 핵심 포인트 ${kps.length}가지</div>
+${kps.map((k, n) => row(n + 1, k.title, k.desc)).join('')}</div>\n`;
     }
 
-    // 비교형: 3번째 섹션 뒤에 비교표 + 체크리스트
+    (s.body || []).forEach((t) => (h += p(t) + '\n'));
+
+    if (s.tip) {
+      h += `<div style="border:2px solid ${P};border-radius:14px;padding:16px 20px;margin:8px 0 20px;background:#ffffff;">
+<strong style="font-size:14px;color:${P};">📌 이것만은 꼭!</strong>
+<div style="font-size:15px;line-height:1.7;font-weight:700;color:${T};margin-top:6px;word-break:keep-all;">${rich(s.tip)}</div></div>\n`;
+    }
+
+    // 비교형: 비교표 / 체크리스트
     if (i === 2 && d.comparisonTable?.headers?.length) {
       const t = d.comparisonTable;
       h += `<div style="overflow-x:auto;margin:8px 0 24px;"><table style="width:100%;min-width:480px;border-collapse:collapse;font-size:14px;">
-<thead><tr>${t.headers.map((x) => `<th style="background:#fce7f3;color:#831843;padding:12px 10px;text-align:left;">${esc(x)}</th>`).join('')}</tr></thead>
-<tbody>${(t.rows || []).map((r, ri) => `<tr>${r.map((c, ci) => `<td style="padding:12px 10px;border-bottom:1px solid #e2e8f0;background:${ri % 2 ? '#f8fafc' : '#fff'};color:${ci === 0 ? P : G};font-weight:${ci === 0 ? 700 : 400};">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>\n`;
+<thead><tr>${t.headers.map((x) => `<th style="background:#fce7f3;color:${T};padding:12px 10px;text-align:left;">${esc(x)}</th>`).join('')}</tr></thead>
+<tbody>${(t.rows || []).map((r, ri) => `<tr>${r.map((c, ci) => `<td style="padding:12px 10px;border-bottom:1px solid #e2e8f0;background:${ri % 2 ? '#f8fafc' : '#ffffff'};color:${ci === 0 ? P : G};font-weight:${ci === 0 ? 700 : 400};">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>\n`;
     }
     if (i === 3 && d.checklist?.length) {
       h += `<div style="border:2px solid ${P};border-radius:14px;padding:18px 22px;margin:8px 0 24px;">
 <strong style="font-size:15px;color:${P};display:block;margin-bottom:8px;">✅ 체크리스트</strong>
-${d.checklist.map((c) => `<div style="font-size:15px;line-height:1.8;color:#334155;word-break:keep-all;">☐ ${esc(c)}</div>`).join('')}</div>\n`;
+${d.checklist.map((c) => `<div style="font-size:15px;line-height:1.8;color:${T};word-break:keep-all;">☐ ${esc(c)}</div>`).join('')}</div>\n`;
     }
   });
 
-  // 3) Q&A
+  // 4) Q&A
   if (d.qna?.length) {
-    h += `<div style="margin:52px 0 20px;"><div style="font-size:21px;font-weight:800;color:${INK};border-bottom:3px solid ${P};padding-bottom:10px;display:inline-block;">❓ 자주 묻는 질문 Q&amp;A</div></div>\n`;
+    h += `<div style="margin:56px 0 20px;"><div style="font-size:22px;font-weight:900;color:${T};border-bottom:3px solid ${P};padding-bottom:10px;display:inline-block;">❓ 자주 묻는 질문 Q&amp;A</div></div>\n`;
     d.qna.forEach((x) => {
       h += `<div style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin:0 0 14px;">
-<div style="background:#f1f5f9;padding:14px 20px;font-size:15px;font-weight:800;color:${INK};word-break:keep-all;"><span style="color:${P};">Q.</span> ${esc(x.q)}</div>
-<div style="padding:16px 20px;font-size:15px;line-height:1.8;color:${G};word-break:keep-all;"><span style="color:${P};font-weight:800;">A.</span> ${rich(x.a)}</div></div>\n`;
+<div style="background:#f1f5f9;padding:14px 20px;font-size:16px;font-weight:800;color:${T};word-break:keep-all;"><span style="color:${P};">Q.</span> ${esc(x.q)}</div>
+<div style="padding:16px 20px;font-size:15px;line-height:1.8;color:${T};word-break:keep-all;"><span style="color:${P};font-weight:800;">A.</span> ${rich(x.a)}</div></div>\n`;
     });
   }
 
-  // 4) 마무리 인사
-  h += `<div style="background:#fdf2f8;border:1px solid #f9d0e3;border-radius:16px;padding:26px;margin:48px 0 8px;text-align:center;">
+  // 5) 마무리 인사
+  h += `<div style="background:#fdf2f8;border:1px solid ${LINE};border-radius:16px;padding:26px;margin:48px 0 8px;text-align:center;">
 <div style="font-size:18px;font-weight:800;color:${P};margin-bottom:10px;">💌 마무리 인사</div>
-<p style="font-size:15px;line-height:1.9;color:#475569;margin:0;word-break:keep-all;">${rich(d.closing)}</p></div>\n`;
+<p style="font-size:15px;line-height:1.9;color:${G};margin:0;word-break:keep-all;">${rich(d.closing)}</p></div>\n`;
   return h;
 }
 
