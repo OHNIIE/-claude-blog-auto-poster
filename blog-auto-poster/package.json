@@ -1,0 +1,7 @@
+{
+  "name": "blog-auto-poster",
+  "version": "1.0.0",
+  "private": true,
+  "description": "수익형 블로그 오토 포스터 (Vercel + Gemini)",
+  "engines": { "node": ">=18" }
+}
