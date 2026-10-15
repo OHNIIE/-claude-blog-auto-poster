@@ -13,15 +13,21 @@ const SCHEMA = {
     tags: ARR(STR),
     summary: STR,
     thumbnailScene: STR,
+    thumbnailAlt: STR,
     sections: ARR({
       type: 'OBJECT',
       properties: {
         role: STR, icon: STR, heading: STR, oneLine: STR,
         body: ARR(STR),
         keyPoints: ARR({ type: 'OBJECT', properties: { title: STR, desc: STR }, required: ['title', 'desc'] }),
-        tip: STR, imageScene: STR,
+        tip: STR, imageScene: STR, imageAlt: STR,
+        links: ARR({
+          type: 'OBJECT',
+          properties: { anchor: STR, label: STR, query: STR, officialUrl: { type: 'STRING', nullable: true } },
+          required: ['label', 'query'],
+        }),
       },
-      required: ['heading', 'oneLine', 'body', 'keyPoints', 'tip', 'imageScene'],
+      required: ['heading', 'oneLine', 'body', 'keyPoints', 'tip', 'imageScene', 'imageAlt'],
     }),
     comparisonTable: {
       type: 'OBJECT', nullable: true,
@@ -35,8 +41,58 @@ const SCHEMA = {
     qna: ARR({ type: 'OBJECT', properties: { q: STR, a: STR }, required: ['q', 'a'] }),
     closing: STR,
   },
-  required: ['titles', 'meta', 'tags', 'summary', 'thumbnailScene', 'sections', 'qna', 'closing'],
+  required: ['titles', 'meta', 'tags', 'summary', 'thumbnailScene', 'thumbnailAlt', 'sections', 'qna', 'closing'],
 };
+
+function toRoot(u) {
+  try {
+    const x = new URL(String(u).trim());
+    if (x.protocol !== 'https:' || !x.hostname.includes('.')) return null;
+    return x.origin + '/';
+  } catch {
+    return null;
+  }
+}
+
+async function urlAlive(u) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 4000);
+  try {
+    const r = await fetch(u, {
+      method: 'GET', redirect: 'follow', signal: ac.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BlogAutoPoster/1.0)' },
+    });
+    try { await r.body?.cancel?.(); } catch {}
+    return (r.status >= 200 && r.status < 400) || [401, 403, 405, 429].includes(r.status);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 공식 주소는 실제로 열리는 것만 사용, 아니면 네이버 검색 링크로 대체
+async function resolveLinks(d) {
+  const all = [];
+  (d.sections || []).forEach((s) => {
+    s.links = (Array.isArray(s.links) ? s.links : []).filter((l) => l && l.label && l.query).slice(0, 2);
+    all.push(...s.links);
+  });
+  await Promise.all(
+    all.map(async (l) => {
+      const root = l.officialUrl ? toRoot(l.officialUrl) : null;
+      if (root && (await urlAlive(root))) {
+        l.url = root;
+        l.kind = 'official';
+      } else {
+        l.url = 'https://search.naver.com/search.naver?query=' + encodeURIComponent(l.query);
+        l.kind = 'search';
+      }
+      delete l.officialUrl;
+    })
+  );
+  return d;
+}
 
 function normalize(d) {
   if (d.comparisonTable && Array.isArray(d.comparisonTable.rows)) {
@@ -74,8 +130,11 @@ function bodyLength(d) {
   return (d.sections || []).reduce((n, s) => n + (s.body || []).join('').replace(/\s/g, '').length, 0);
 }
 
-function buildPrompt({ keyword, concept, today, retryNote }) {
+function buildPrompt({ keyword, concept, today, retryNote, notes }) {
   const c = CONCEPTS[concept] || CONCEPTS.deep;
+  const factsBlock = notes
+    ? `\n[최신 조사 노트 - 오늘(${today}) 웹 검색으로 확인한 내용]\n${notes}\n- 수치·날짜·금액·조건·정책·제품 사양은 위 노트에 있는 내용만 사용할 것. 노트에 없는 구체적 숫자는 쓰지 말고 "공식 사이트에서 확인해 주세요"로 안내.\n- 노트에 '상충'이라고 표시된 정보는 단정하지 말고 "자료마다 달라 확인이 필요해요"라고 쓸 것.\n`
+    : '';
   return `당신은 구글 SEO에 능숙한 티스토리 블로거입니다. 아래 키워드로 블로그 포스팅을 작성하세요.
 
 [키워드] ${keyword}
@@ -97,6 +156,12 @@ function buildPrompt({ keyword, concept, today, retryNote }) {
 - 각 문단에서 독자가 꼭 기억해야 할 핵심 구절 1~2개를 **이렇게** 별표 두 개로 감쌀 것 (문단 전체를 감싸지 말고 8~20자 구절만).
 - keyPoints는 소제목당 정확히 3개. 각 항목은 {"title": 18자 이내의 핵심 키워드형 문구, "desc": 40자 이내의 한 줄 설명}.
 - tip은 소제목당 1개, 60자 이내로 '이것만은 꼭!' 같은 실용 팁 또는 주의점 한 문장.
+[링크 - 필요할 때만]
+- 독자가 실제로 확인·신청·비교해야 하는 곳이 있을 때만 sections[].links에 넣을 것 (소제목당 0~2개, 글 전체 5개 이내). 필요 없으면 빈 배열 [].
+- anchor: 해당 소제목 body 문장 안에 '그대로 들어 있는' 4~15자 한글 구절 (링크가 걸릴 자리). 적당한 구절이 없으면 빈 문자열.
+- label: 버튼 문구 12자 이내 (예: "정부24 바로가기").
+- query: 네이버에서 검색할 키워드 (예: "청년월세지원 신청방법").
+- officialUrl: 정부·공공기관·기업의 공식 사이트 '메인 주소'(https://도메인/ 형태)를 확실히 알 때만. 하위 경로는 쓰지 말고, 조금이라도 불확실하면 null. 주소를 지어내지 말 것.
 [사람이 쓴 글처럼]
 - "~에 대해 알아보겠습니다", "결론적으로", "첫째/둘째/셋째" 반복, 모든 문장을 비슷한 길이로 쓰는 것 등 AI 티가 나는 표현을 피하고, 짧은 문장과 긴 문장을 섞고, 가끔 독자에게 질문을 던지며 자연스러운 말투로 쓸 것.
 [분량 - 반드시 지킬 것]
@@ -107,9 +172,12 @@ function buildPrompt({ keyword, concept, today, retryNote }) {
 - meta는 120자 안팎의 메타 설명.
 - tags는 핵심 키워드 정확히 10개 (#, 공백 없이).
 [사실 규칙]
-- 확인되지 않은 통계·수치·법령·정책 내용·출처를 지어내지 말 것. 불확실한 정보는 "최신 공식 공지를 꼭 확인해 주세요"처럼 안내.
+- 확인되지 않은 통계·수치·법령·정책 내용·출처를 지어내지 말 것. 불확실한 정보는 "최신 공식 공지를 꼭 확인해 주세요"처럼 안내.${factsBlock}
 [이미지 장면]
 - 각 섹션의 imageScene과 thumbnailScene에는 해당 내용을 상징하는 장면을 한 문장으로 묘사 (글자는 넣지 않는 그림 기준, 한국어).
+
+[이미지 대체 텍스트(alt)]
+- imageAlt, thumbnailAlt: 그림 내용을 설명하는 자연스러운 한 문장(15~40자). 핵심 키워드를 자연스럽게 1회만 포함하고 키워드 나열은 금지. '이미지', '사진'으로 시작하지 말 것.
 
 [출력 형식] 아래 JSON 하나만 출력. 마크다운 코드블록·설명 금지.
 {
@@ -118,6 +186,7 @@ function buildPrompt({ keyword, concept, today, retryNote }) {
   "tags": ["태그1", "... 총 10개"],
   "summary": "줄거리",
   "thumbnailScene": "대표 썸네일 장면 묘사",
+  "thumbnailAlt": "대표 썸네일 대체 텍스트",
   "sections": [
     {
       "role": "기",
@@ -127,7 +196,9 @@ function buildPrompt({ keyword, concept, today, retryNote }) {
       "body": ["짧은 문단1 (핵심 **구절** 강조)", "짧은 문단2", "짧은 문단3", "짧은 문단4"],
       "keyPoints": [{ "title": "핵심 키워드", "desc": "한 줄 설명" }, { "title": "...", "desc": "..." }, { "title": "...", "desc": "..." }],
       "tip": "이것만은 꼭! 한 문장 팁",
-      "imageScene": "이 소제목 장면 묘사"
+      "links": [{ "anchor": "본문 속 구절", "label": "버튼 문구", "query": "검색 키워드", "officialUrl": null }],
+      "imageScene": "이 소제목 장면 묘사",
+      "imageAlt": "이 소제목 이미지의 대체 텍스트"
     }
   ],
   "comparisonTable": { "headers": ["항목","A","B"], "rows": [{ "cells": ["...","...","..."] }] },
@@ -162,6 +233,53 @@ function validate(d) {
   return d;
 }
 
+// 구글 검색 연동으로 최신 사실 조사 (실패해도 글 생성은 계속 진행)
+async function research({ apiKey, kw, today }) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 28000);
+  try {
+    const prompt = `오늘은 ${today}입니다. 웹 검색으로 "${kw}"에 대해 블로그 글 작성에 필요한 최신·정확한 사실을 조사해 한국어 노트로 정리하세요.
+규칙:
+- 검색으로 확인된 사실만 쓰고, 추측하지 말 것.
+- 수치·날짜·금액·신청 조건·정책·제품 사양은 정확히 쓰고, 출처 기관/매체 이름을 함께 적을 것.
+- 항목은 10개 이내, 항목당 1~2문장.
+- 자료마다 내용이 다르면 둘 다 적고 '상충'이라고 표시할 것.
+- 독자가 자주 묻는 질문 3개도 함께 정리할 것.
+- 확인된 정보가 없으면 '확인된 정보 없음'이라고만 답할 것.`;
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+      method: 'POST',
+      signal: ac.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+      }),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const cand = j?.candidates?.[0];
+    const notes = (cand?.content?.parts || []).map((p) => p.text || '').join('').trim();
+    if (notes.length < 40 || /^확인된 정보 없음/.test(notes)) return null;
+    const seen = new Set();
+    const sources = [];
+    for (const c of cand?.groundingMetadata?.groundingChunks || []) {
+      const w = c?.web;
+      if (!w?.uri || !/^https:\/\//.test(w.uri)) continue;
+      const key = w.title || w.uri;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sources.push({ title: String(w.title || w.uri).slice(0, 80), uri: w.uri });
+      if (sources.length >= 8) break;
+    }
+    return { notes: notes.slice(0, 6000), sources };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST만 지원합니다.' });
 
@@ -173,11 +291,15 @@ module.exports = async (req, res) => {
     return res.status(401).json({ error: '접근코드가 올바르지 않습니다.' });
   }
 
-  const { keyword, concept } = req.body || {};
+  const { keyword, concept, grounding } = req.body || {};
+  const useGrounding = grounding !== false && process.env.GROUNDING !== 'off';
   const kw = String(keyword || '').trim().slice(0, 100);
   if (!kw) return res.status(400).json({ error: '키워드를 입력해 주세요.' });
 
   const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric' });
+
+  const t0 = Date.now();
+  let facts = null;
 
   async function callGemini(retryNote, useSchema = true) {
     const r = await fetch(
@@ -186,7 +308,7 @@ module.exports = async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today, retryNote }) }] }],
+          contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today, retryNote, notes: facts?.notes }) }] }],
           generationConfig: {
             temperature: 0.7,
             responseMimeType: 'application/json',
@@ -237,9 +359,10 @@ module.exports = async (req, res) => {
   }
 
   try {
+    if (useGrounding) facts = await research({ apiKey, kw, today });
     let data = await callWithRetry('');
     let count = bodyLength(data);
-    if (count < MIN_CHARS) {
+    if (count < MIN_CHARS && Date.now() - t0 < 75000) {
       // 1500자 미만이면 한 번 더 길게 다시 작성
       try {
         const again = await callGemini(
@@ -249,7 +372,8 @@ module.exports = async (req, res) => {
         if (c2 > count) { data = again; count = c2; }
       } catch (e) { /* 재시도 실패 시 첫 결과 사용 */ }
     }
-    return res.status(200).json({ data, keyword: kw, concept, charCount: count });
+    try { await resolveLinks(data); } catch { /* 링크 처리 실패해도 글은 그대로 전달 */ }
+    return res.status(200).json({ data, keyword: kw, concept, charCount: count, grounded: !!facts, sources: facts?.sources || [] });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message || '생성 중 오류가 발생했어요.' });
   }
