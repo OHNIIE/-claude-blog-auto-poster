@@ -62,6 +62,19 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 .preview.mobile{max-width:390px}
 .sec-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
 .loading{display:none;text-align:center;padding:30px;color:var(--gray);font-size:14px}
+.kwrow{display:flex;gap:8px;align-items:stretch}
+.kwrow input{flex:1;min-width:0}
+.kwrow .mini{padding:0 14px;font-size:13px;border-radius:12px}
+.relbox{display:none;margin-top:12px;background:var(--pink-soft);border:1px solid var(--pink-line);border-radius:14px;padding:14px}
+.relchip{border:1px solid var(--pink-line);background:#fff;border-radius:99px;padding:7px 13px;margin:0 6px 6px 0;font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
+.relchip:hover{background:var(--pink);border-color:var(--pink);color:#fff}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;margin:0 0 14px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--pink)}
+.srcbox{background:var(--pink-soft);border:1px solid var(--pink-line);border-radius:12px;padding:12px 14px;margin:0 0 16px;font-size:13px}
+.srcbox.warn{background:#fffbeb;border-color:#fde68a}
+.srcbox ul{margin:8px 0 0;padding-left:18px}
+.srcbox a{color:var(--pink)}
+.altrow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--gray);margin-top:8px;background:#fff;border:1px dashed var(--pink-line);border-radius:10px;padding:8px 10px}
 @media(max-width:640px){.two{grid-template-columns:1fr}.concepts{grid-template-columns:1fr}.card{padding:18px}}
 </style>
 </head>
@@ -89,7 +102,8 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
       </div>
     </div>
     <div class="chips" id="chips"><span class="sub">불러오는 중…</span></div>
-    <input type="text" id="keyword" placeholder="키워드 직접 입력 가능…" maxlength="100">
+    <div class="kwrow"><input type="text" id="keyword" placeholder="키워드 직접 입력 가능…" maxlength="100"><button class="mini pink" id="findRel">🔎 연관 키워드</button></div>
+    <div class="relbox" id="related"></div>
     <div class="err" id="trendErr"></div>
   </div>
 
@@ -101,6 +115,7 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
       <button class="concept" data-c="review"><b>💬 친근한 후기형</b><span>실제 경험 느낌의 구어체 &amp; Q&amp;A</span></button>
       <button class="concept" data-c="compare"><b>⚖️ 정보 비교형</b><span>장단점 비교표 및 체크리스트</span></button>
     </div>
+    <label class="check"><input type="checkbox" id="grounding" checked> 🔎 최신 정보 검색 반영 <span class="sub">(정확도↑ · 시간과 무료 한도를 조금 더 써요)</span></label>
     <div id="codeRow" style="display:none;margin-bottom:14px">
       <input type="password" id="accessCode" placeholder="접근코드 (서버에 ACCESS_CODE를 설정한 경우)">
     </div>
@@ -108,7 +123,7 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
     <div class="err" id="genErr"></div>
   </div>
 
-  <div class="loading card" id="loading">⏳ 글을 쓰는 중이에요… 보통 20~40초 걸려요.</div>
+  <div class="loading card" id="loading">⏳ 글을 쓰는 중이에요… 보통 30~60초 걸려요. (최신 정보 검색을 켜면 조금 더 걸려요)</div>
   <div id="result"></div>
 </div>
 
@@ -140,12 +155,36 @@ async function loadTrends() {
 $('chips').addEventListener('click', (e) => {
   const b = e.target.closest('.chip'); if (!b) return;
   document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
-  b.classList.add('on'); $('keyword').value = b.dataset.k;
+  b.classList.add('on'); $('keyword').value = b.dataset.k; loadRelated();
+});
+async function loadRelated() {
+  const q = $('keyword').value.trim(), box = $('related');
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<span class="sub">연관 검색어 찾는 중…</span>';
+  try {
+    const r = await fetch('/api/suggest?geo=' + geo + '&q=' + encodeURIComponent(q));
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error);
+    box.innerHTML = j.suggestions.length
+      ? '<div class="sub" style="margin-bottom:8px">💡 <b>연관 검색어</b> (구글 자동완성 · 실제로 검색되는 말) — 누르면 키워드가 바뀌어요. 길고 구체적인 키워드일수록 상위 노출에 유리해요.</div>' +
+        j.suggestions.map((k) => `<button class="relchip" data-k="${esc(k)}">${esc(k)}</button>`).join('')
+      : '<span class="sub">연관 검색어를 찾지 못했어요. 다른 키워드로 해 보세요.</span>';
+  } catch (e) {
+    box.innerHTML = '<span class="sub">연관 검색어를 가져오지 못했어요: ' + esc(e.message) + '</span>';
+  }
+}
+$('findRel').onclick = loadRelated;
+$('keyword').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadRelated(); });
+$('related').addEventListener('click', (e) => {
+  const b = e.target.closest('.relchip'); if (!b) return;
+  document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+  $('keyword').value = b.dataset.k; loadRelated();
 });
 $('tabs').addEventListener('click', (e) => {
   const b = e.target.closest('.tab'); if (!b) return;
   document.querySelectorAll('.tab').forEach((t) => t.classList.remove('on'));
-  b.classList.add('on'); geo = b.dataset.geo; loadTrends();
+  b.classList.add('on'); geo = b.dataset.geo; $('related').style.display = 'none'; loadTrends();
 });
 $('refresh').onclick = loadTrends;
 setInterval(() => {
@@ -202,7 +241,7 @@ ${d.sections.map((s, i) => row(i + 1, clean(s.heading), s.oneLine)).join('')}</d
     h += `<div style="margin:52px 0 20px;border:1px solid ${LINE};border-radius:16px;overflow:hidden;">
 <div style="background:#fce7f3;padding:22px 24px;border-bottom:3px solid ${P};">
 <span style="display:inline-block;background:${P};color:#ffffff;font-size:14px;font-weight:800;border-radius:99px;padding:3px 15px;">${i + 1}</span>
-<div style="font-size:23px;line-height:1.45;font-weight:900;color:${T};margin-top:12px;word-break:keep-all;">${esc(s.icon || '')} ${esc(clean(s.heading))}</div></div>
+<h2 style="font-size:23px;line-height:1.45;font-weight:900;color:${T};margin:12px 0 0;padding:0;border:0;background:none;word-break:keep-all;">${esc(s.icon || '')} ${esc(clean(s.heading))}</h2></div>
 <div style="background:#f8fafc;padding:16px 24px;font-size:16px;line-height:1.6;font-weight:800;color:${P};word-break:keep-all;">💡 ${rich(s.oneLine)}</div></div>\n`;
 
     h += marker(`📷 [소제목 ${i + 1} 이미지 삽입 위치] 이미지를 넣고 이 줄은 삭제하세요`);
@@ -214,7 +253,27 @@ ${d.sections.map((s, i) => row(i + 1, clean(s.heading), s.oneLine)).join('')}</d
 ${kps.map((k, n) => row(n + 1, k.title, k.desc)).join('')}</div>\n`;
     }
 
-    (s.body || []).forEach((t) => (h += p(t) + '\n'));
+    // 링크: 본문 속 문구에 걸기 + 소제목 끝 버튼
+    const links = (s.links || []).filter((l) => l && /^https?:\/\//.test(l.url || ''));
+    const aTag = (l, inner, st) => `<a href="${esc(l.url)}" target="_blank" rel="${l.kind === 'search' ? 'nofollow noopener' : 'noopener'}" style="${st}">${inner}</a>`;
+    const bodyHtml = (s.body || []).map(p);
+    links.forEach((l) => {
+      const a = esc(String(l.anchor || '').trim());
+      if (a.length < 3 || !/[가-힣]/.test(a)) return;
+      for (let k = 0; k < bodyHtml.length; k++) {
+        const idx = bodyHtml[k].indexOf(a);
+        if (idx >= 0) {
+          bodyHtml[k] = bodyHtml[k].slice(0, idx) + aTag(l, a, `color:${P};font-weight:800;text-decoration:underline;`) + bodyHtml[k].slice(idx + a.length);
+          break;
+        }
+      }
+    });
+    h += bodyHtml.join('\n') + '\n';
+
+    if (links.length) {
+      h += `<div style="font-size:13px;font-weight:700;color:#94a3b8;padding:0 0 8px;">👉 더 알아보기</div>
+<div style="padding:0 0 22px;">${links.map((l) => aTag(l, `${l.kind === 'official' ? '🔗' : '🔍'} ${esc(l.label)}`, `display:inline-block;background:${P};color:#ffffff;font-size:14px;font-weight:800;padding:9px 18px;border-radius:99px;text-decoration:none;margin:0 8px 8px 0;`)).join('')}</div>\n`;
+    }
 
     if (s.tip) {
       h += `<div style="border:2px solid ${P};border-radius:14px;padding:16px 20px;margin:8px 0 20px;background:#ffffff;">
@@ -238,10 +297,10 @@ ${d.checklist.map((c) => `<div style="font-size:15px;line-height:1.8;color:${T};
 
   // 4) Q&A
   if (d.qna?.length) {
-    h += `<div style="margin:56px 0 20px;"><div style="font-size:22px;font-weight:900;color:${T};border-bottom:3px solid ${P};padding-bottom:10px;display:inline-block;">❓ 자주 묻는 질문 Q&amp;A</div></div>\n`;
+    h += `<div style="margin:56px 0 20px;"><h2 style="font-size:22px;line-height:1.4;font-weight:900;color:${T};margin:0;padding:0 0 10px;border:0;border-bottom:3px solid ${P};background:none;display:inline-block;">❓ 자주 묻는 질문 Q&amp;A</h2></div>\n`;
     d.qna.forEach((x) => {
       h += `<div style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin:0 0 14px;">
-<div style="background:#f1f5f9;padding:14px 20px;font-size:16px;font-weight:800;color:${T};word-break:keep-all;"><span style="color:${P};">Q.</span> ${esc(x.q)}</div>
+<h3 style="background:#f1f5f9;margin:0;border:0;padding:14px 20px;font-size:16px;line-height:1.5;font-weight:800;color:${T};word-break:keep-all;"><span style="color:${P};">Q.</span> ${esc(x.q)}</h3>
 <div style="padding:16px 20px;font-size:15px;line-height:1.8;color:${T};word-break:keep-all;"><span style="color:${P};font-weight:800;">A.</span> ${rich(x.a)}</div></div>\n`;
     });
   }
@@ -262,20 +321,30 @@ async function copy(text, btn) {
 
 /* ---------- 결과 렌더 ---------- */
 let current = null, currentHTML = '';
-function promptBlock(label, scene, thumb, id, where) {
+function promptBlock(label, scene, thumb, id, where, alt) {
   const text = imagePrompt(scene, thumb);
   return `<div class="prompt" id="pr-${id}"><div class="top"><span>✨ ${esc(label)}</span>
 <button class="mini pink" data-copy="${esc(text)}">프롬프트 복사</button></div>
 <div class="sub" style="margin-top:6px">📍 ${esc(where || '')}</div>
+${alt ? `<div class="altrow"><span>🏷️ alt 문구: <b>${esc(alt)}</b></span><button class="mini" data-copy="${esc(alt)}">복사</button></div>` : ''}
 <button class="link" data-toggle="pr-${id}">프롬프트 내용 보기</button><pre>${esc(text)}</pre></div>`;
 }
-function renderResult(d, count) {
+function renderResult(d, count, info) {
+  info = info || {};
   current = d; currentHTML = buildPostHTML(d, false);
+  const srcBlock = info.grounded && info.sources && info.sources.length
+    ? `<div class="srcbox"><b>🔎 최신 정보 검색을 반영했어요</b> <span class="sub">발행 전에 숫자·날짜는 아래 출처에서 한 번 확인해 주세요</span><ul>${info.sources.map((x) => `<li><a href="${esc(x.uri)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul></div>`
+    : info.grounded
+      ? `<div class="srcbox"><b>🔎 최신 정보 검색을 반영했어요</b> <span class="sub">출처 목록은 받지 못했어요. 숫자·날짜는 꼭 확인해 주세요</span></div>`
+      : info.wanted
+        ? `<div class="srcbox warn"><b>⚠️ 이번엔 최신 정보 검색을 건너뛰었어요</b> <span class="sub">검색 결과가 없거나 지연됐어요. 숫자·날짜·정책은 반드시 직접 확인해 주세요</span></div>`
+        : '';
   const tags = (d.tags || []).slice(0, 10);
   $('result').innerHTML = `
 <div class="card">
   <h2 style="margin-bottom:6px;font-size:20px">🎉 포스팅 생성 완료!</h2>
   <div class="sub" style="margin-bottom:16px">본문 약 ${(count || 0).toLocaleString()}자 (공백 제외)</div>
+  ${srcBlock}
 
   <h3>📌 CTR 높이는 추천 제목</h3>
   <div class="box titles" style="margin-bottom:18px">${d.titles.map((t, i) =>
@@ -290,10 +359,10 @@ function renderResult(d, count) {
 
   <div class="imgbox" style="margin-bottom:18px">
     <h3 style="color:#831843;font-size:15px">🎨 추천 이미지 가이드 (제미나이 전용)</h3>
-    <div class="sub" style="color:#9d174d">본문 코드에 <b>📷 [이미지 삽입 위치]</b> 줄이 있어요. 그 자리에 이미지를 넣고 안내 줄은 지워 주세요.</div>
-    ${promptBlock('[대표 썸네일] 이미지 프롬프트', d.thumbnailScene || d.titles[0], true, 'thumb', '넣을 위치: 글 맨 위 📷 표시 (티스토리 대표 이미지로도 설정)')}
+    <div class="sub" style="color:#9d174d">본문 코드에 <b>📷 [이미지 삽입 위치]</b> 줄이 있어요. 그 자리에 이미지를 넣고 안내 줄은 지워 주세요.<br>이미지를 올린 뒤 아래 <b>🏷️ alt 문구</b>를 이미지의 '대체 텍스트'에 붙여넣으면 검색 노출에 도움이 돼요. (이미지를 클릭하면 나오는 메뉴에 있어요. 이름은 에디터 버전에 따라 조금 다를 수 있어요.)</div>
+    ${promptBlock('[대표 썸네일] 이미지 프롬프트', d.thumbnailScene || d.titles[0], true, 'thumb', '넣을 위치: 글 맨 위 📷 표시 (티스토리 대표 이미지로도 설정)', d.thumbnailAlt || d.titles[0])}
     <div style="margin:16px 0 0;font-size:13px;font-weight:800;color:#831843">📌 소제목별 이미지</div>
-    ${d.sections.map((s, i) => promptBlock(`소제목 ${i + 1}: ${s.heading}`, s.imageScene || s.heading, false, i, `넣을 위치: 본문 ${i + 1}번 소제목 카드 바로 아래 📷 표시`)).join('')}
+    ${d.sections.map((s, i) => promptBlock(`소제목 ${i + 1}: ${s.heading}`, s.imageScene || s.heading, false, i, `넣을 위치: 본문 ${i + 1}번 소제목 카드 바로 아래 📷 표시`, s.imageAlt || s.heading)).join('')}
   </div>
 
   <div class="sec-title"><h3 style="margin:0">📖 본문 HTML 코드 <span class="sub">(티스토리 HTML 모드에 붙여넣기)</span></h3><button class="mini" id="copyHtml">코드 복사</button></div>
@@ -330,12 +399,12 @@ $('go').onclick = async () => {
     const r = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-access-code': $('accessCode').value },
-      body: JSON.stringify({ keyword: kw, concept, geo }),
+      body: JSON.stringify({ keyword: kw, concept, geo, grounding: $('grounding').checked }),
     });
     const j = await r.json();
     if (r.status === 401) $('codeRow').style.display = 'block';
     if (!r.ok) throw new Error(j.error || '생성 실패');
-    renderResult(j.data, j.charCount);
+    renderResult(j.data, j.charCount, { grounded: j.grounded, sources: j.sources, wanted: $('grounding').checked });
   } catch (e) {
     $('genErr').textContent = e.message; $('genErr').style.display = 'block';
   } finally {
