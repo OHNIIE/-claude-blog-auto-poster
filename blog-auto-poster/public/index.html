@@ -75,6 +75,33 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 .srcbox ul{margin:8px 0 0;padding-left:18px}
 .srcbox a{color:var(--pink)}
 .altrow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--gray);margin-top:8px;background:#fff;border:1px dashed var(--pink-line);border-radius:10px;padding:8px 10px}
+.rmsum{cursor:pointer;font-size:17px;font-weight:800;list-style:none}
+.rmsum::-webkit-details-marker{display:none}
+.rmopts{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0}
+.rmopts label{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
+.rmopts select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:8px 10px;font:inherit;font-size:13px}
+.rmta{width:100%;height:84px;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px 14px;font:inherit;font-size:13px;resize:vertical;margin:0 0 14px;outline:none}
+.rmta:focus{border-color:var(--pink);background:#fff}
+.rmbox{background:var(--pink-soft);border:1px solid var(--pink-line);border-radius:14px;padding:14px;margin:18px 0 12px;font-size:14px;line-height:1.6;word-break:keep-all}
+.rmclusters{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.rmcl{background:#fff;border:1px solid var(--pink-line);border-radius:10px;padding:6px 10px;font-size:12px;line-height:1.5}
+.rmbar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:14px 0 10px;font-size:13px;font-weight:700}
+.rmrow{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 10px;background:#fff}
+.rmrow.done{opacity:.5}
+.rmrow.done .rmtitle{text-decoration:line-through}
+.rmrow input[type=checkbox]{width:18px;height:18px;accent-color:var(--pink);margin-top:2px;flex-shrink:0}
+.rmmain{flex:1;min-width:0}
+.rmtop{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin-bottom:6px}
+.rmno{font-weight:800;color:var(--pink)}
+.rmdate{font-weight:700;color:var(--gray)}
+.bdg{border-radius:99px;padding:2px 9px;font-size:11px;font-weight:700;background:var(--gray-soft);color:var(--gray)}
+.bdg.pk{background:var(--pink-soft);color:var(--pink);border:1px solid var(--pink-line)}
+.bdg.warn{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
+.rmtitle{font-size:15px;font-weight:800;line-height:1.5;word-break:keep-all}
+.rmmeta{font-size:12px;color:var(--gray);margin-top:4px;line-height:1.6;word-break:keep-all}
+.rmwrite{align-self:center;border:0;background:var(--ink);color:#fff;border-radius:10px;padding:9px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.rmwrite:hover{background:var(--pink)}
+@media(max-width:640px){.rmrow{flex-wrap:wrap}.rmwrite{width:100%;align-self:stretch}}
 @media(max-width:640px){.two{grid-template-columns:1fr}.concepts{grid-template-columns:1fr}.card{padding:18px}}
 </style>
 </head>
@@ -92,6 +119,21 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
       <button class="tab" data-geo="JP">🇯🇵 일본</button>
     </div>
   </div>
+
+  <details class="card" id="rmCard">
+    <summary class="rmsum">🗺️ 주제 로드맵 <span class="sub">· 주제 집중 + 시즌 글 계획</span></summary>
+    <div class="sub" style="margin:12px 0 14px">메인 주제를 정하면 허브 글과 롱테일 글을 <b>작성 순서 · 발행 일정 · 내부 링크</b>까지 짜 줘요. 시즌 글은 검색이 몰리기 약 3주 전에 나가도록 앞쪽에 배치해요.</div>
+    <input type="text" id="rmTopic" maxlength="80" placeholder="메인 주제 1~2개 (예: 정부 지원금·생활 혜택, 통신비 절약)">
+    <div class="rmopts">
+      <label>글 개수 <select id="rmCount"><option value="20">20편</option><option value="30">30편</option></select></label>
+      <label>발행 속도 <select id="rmPer"><option value="2">주 2회</option><option value="3" selected>주 3회</option><option value="5">주 5회</option></select></label>
+    </div>
+    <textarea id="rmExisting" class="rmta" placeholder="이미 쓴 글 제목을 붙여넣으면 겹치지 않게 짜 드려요 (선택 · 한 줄에 하나)"></textarea>
+    <label class="check"><input type="checkbox" id="rmGround" checked> 🔎 최신 정보 검색으로 시즌 일정 확인 <span class="sub">(무료 한도 1회 추가)</span></label>
+    <button class="go" id="rmGo">🗺️ 로드맵 만들기</button>
+    <div class="err" id="rmErr"></div>
+    <div id="rmResult"></div>
+  </details>
 
   <div class="card">
     <div class="row">
@@ -389,6 +431,88 @@ $('result').addEventListener('click', (e) => {
     document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('pink', (b.dataset.view === 'mobile') === previewMobile)); }
 });
 
+/* ---------- 주제 로드맵 ---------- */
+const RM_KEY = 'bap_roadmap', RM_DONE = 'bap_roadmap_done', RM_IN = 'bap_roadmap_in';
+let roadmap = null, rmDone = {};
+const saveLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+try { roadmap = JSON.parse(localStorage.getItem(RM_KEY) || 'null'); rmDone = JSON.parse(localStorage.getItem(RM_DONE) || '{}') || {}; } catch {}
+try { const sv = JSON.parse(localStorage.getItem(RM_IN) || '{}'); $('rmTopic').value = sv.topic || ''; $('rmExisting').value = sv.existing || ''; } catch {}
+const INTENT_CONCEPT = { '비교': 'compare', '후기': 'review', '체크리스트': 'summary' };
+function setConcept(c) { concept = c; document.querySelectorAll('.concept').forEach((x) => x.classList.toggle('on', x.dataset.c === c)); }
+function fmtDate(ymd) {
+  const d = new Date(ymd + 'T12:00:00Z');
+  return (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + '(' + '일월화수목금토'[d.getUTCDay()] + ')';
+}
+function rmText() {
+  return roadmap.posts.map((p) => `${p.no}. ${fmtDate(p.date)} ${p.seasonal ? '[시즌] ' : ''}${p.title} — ${p.keyword}`).join('\n');
+}
+function renderRoadmap() {
+  if (!roadmap || !roadmap.posts) return;
+  $('rmCard').open = true;
+  const done = roadmap.posts.filter((p) => rmDone[p.keyword]).length;
+  const src = roadmap.grounded
+    ? `<div class="srcbox"><b>🔎 최신 정보 검색으로 시즌 일정을 확인했어요</b> <span class="sub">그래도 날짜·제도는 발행 전에 공식 사이트에서 확인해 주세요</span>${roadmap.sources && roadmap.sources.length ? `<ul>${roadmap.sources.map((x) => `<li><a href="${esc(x.uri)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul>` : ''}</div>`
+    : `<div class="srcbox warn"><b>⚠️ 검색 없이 일반적인 시즌 패턴으로 짰어요</b> <span class="sub">시즌 글의 날짜는 대략적인 추정이에요. 발행 전에 꼭 확인해 주세요</span></div>`;
+  $('rmResult').innerHTML = `
+<div class="rmbox"><b>📌 전략</b><div style="margin-top:6px">${esc(roadmap.summary)}</div>
+<div class="rmclusters">${(roadmap.clusters || []).map((c) => `<div class="rmcl"><b>${esc(c.name)}</b><br>${esc(c.desc)}</div>`).join('')}</div></div>
+${src}
+<div class="rmbar"><span>✅ ${done} / ${roadmap.posts.length}편 완료</span><button class="mini" id="rmCopy">📋 로드맵 복사</button></div>
+${roadmap.posts.map((p, i) => `<div class="rmrow ${rmDone[p.keyword] ? 'done' : ''}">
+<input type="checkbox" data-done="${esc(p.keyword)}" ${rmDone[p.keyword] ? 'checked' : ''} aria-label="완료 표시">
+<div class="rmmain">
+  <div class="rmtop"><span class="rmno">#${p.no}</span><span class="rmdate">${fmtDate(p.date)}</span>
+    ${p.isPillar ? '<span class="bdg pk">🏛️ 허브글</span>' : ''}${p.seasonal ? '<span class="bdg pk">🍂 시즌</span>' : ''}<span class="bdg">${esc(p.intent)}</span>${p.late ? '<span class="bdg warn">⚠️ 시즌 늦음</span>' : ''}</div>
+  <div class="rmtitle">${esc(p.title)}</div>
+  <div class="rmmeta">🔑 ${esc(p.keyword)}${p.cluster ? ' · ' + esc(p.cluster) : ''}</div>
+  ${p.seasonal ? `<div class="rmmeta">🍂 ${esc(p.peakNote || '')} · 게시 권장 ~${fmtDate(p.publishBy)}${p.late ? ' (이미 늦었어요. 최대한 빨리 올려 주세요)' : ''}</div>` : ''}
+  ${p.reason ? `<div class="rmmeta">💬 ${esc(p.reason)}</div>` : ''}
+  ${p.linkTo && p.linkTo.length ? `<div class="rmmeta">🔗 글 안에서 연결할 글: ${p.linkTo.map((n) => '#' + n).join(', ')}</div>` : ''}
+</div>
+<button class="rmwrite" data-write="${i}">✍️ 이 글 쓰기</button></div>`).join('')}`;
+}
+$('rmResult').addEventListener('click', (e) => {
+  const w = e.target.closest('[data-write]');
+  if (w) {
+    const p = roadmap && roadmap.posts[+w.dataset.write]; if (!p) return;
+    $('keyword').value = p.keyword; setConcept(INTENT_CONCEPT[p.intent] || 'deep');
+    document.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+    $('related').style.display = 'none';
+    $('keyword').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('keyword').focus();
+    return;
+  }
+  const c = e.target.closest('#rmCopy'); if (c && roadmap) copy(rmText(), c);
+});
+$('rmResult').addEventListener('change', (e) => {
+  const k = e.target.dataset && e.target.dataset.done; if (!k) return;
+  if (e.target.checked) rmDone[k] = 1; else delete rmDone[k];
+  saveLS(RM_DONE, rmDone); renderRoadmap();
+});
+$('rmGo').onclick = async () => {
+  const topic = $('rmTopic').value.trim(), err = $('rmErr');
+  err.style.display = 'none';
+  if (topic.length < 2) { err.textContent = '메인 주제를 입력해 주세요.'; err.style.display = 'block'; return; }
+  saveLS(RM_IN, { topic, existing: $('rmExisting').value });
+  $('rmGo').disabled = true; $('rmGo').textContent = '⏳ 로드맵 짜는 중… (보통 30~60초)';
+  try {
+    const r = await fetch('/api/roadmap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-access-code': $('accessCode').value },
+      body: JSON.stringify({ topic, count: +$('rmCount').value, perWeek: +$('rmPer').value, existing: $('rmExisting').value, grounding: $('rmGround').checked }),
+    });
+    const j = await r.json();
+    if (r.status === 401) { $('codeRow').style.display = 'block'; throw new Error('접근코드가 필요해요. 아래 "포스팅 컨셉 설정"에 입력칸이 생겼어요.'); }
+    if (!r.ok) throw new Error(j.error || '생성 실패');
+    roadmap = Object.assign({}, j.roadmap, { grounded: j.grounded, sources: j.sources, topic });
+    rmDone = {}; saveLS(RM_KEY, roadmap); saveLS(RM_DONE, rmDone);
+    renderRoadmap();
+  } catch (e) {
+    err.textContent = e.message; err.style.display = 'block';
+  } finally {
+    $('rmGo').disabled = false; $('rmGo').textContent = '🗺️ 로드맵 만들기';
+  }
+};
+
 /* ---------- 생성 ---------- */
 $('go').onclick = async () => {
   const kw = $('keyword').value.trim();
@@ -412,6 +536,7 @@ $('go').onclick = async () => {
   }
 };
 
+if (roadmap) renderRoadmap();
 loadTrends();
 </script>
 </body>
