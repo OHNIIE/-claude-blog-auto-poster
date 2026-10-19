@@ -62,6 +62,10 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 .preview.mobile{max-width:390px}
 .sec-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
 .loading{display:none;text-align:center;padding:30px;color:var(--gray);font-size:14px}
+.codewarn{display:none;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:12px;font-weight:700;line-height:1.6;word-break:keep-all}
+.memolabel{display:block;font-size:14px;font-weight:800;margin:0 0 8px}
+.memota{width:100%;height:84px;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px 14px;font:inherit;font-size:14px;resize:vertical;outline:none}
+.memota:focus{border-color:var(--pink);background:#fff}
 .kwrow{display:flex;gap:8px;align-items:stretch}
 .kwrow input{flex:1;min-width:0}
 .kwrow .mini{padding:0 14px;font-size:13px;border-radius:12px}
@@ -101,12 +105,29 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 .rmmeta{font-size:12px;color:var(--gray);margin-top:4px;line-height:1.6;word-break:keep-all}
 .rmwrite{align-self:center;border:0;background:var(--ink);color:#fff;border-radius:10px;padding:9px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .rmwrite:hover{background:var(--pink)}
+.rmlib{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px;margin:18px 0 0}
+.rmlibhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.rmlibhead>b{font-size:14px}
+.rmlibbtns,.rmbtns{display:flex;gap:6px;flex-wrap:wrap}
+.rmitem{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.rmitem.on{border:2px solid var(--pink);padding:11px;background:var(--pink-soft)}
+.rmitem .nm{flex:1 1 170px;min-width:0;font-size:14px;font-weight:800;line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
+.rmitem .pg{font-size:12px;font-weight:700;color:var(--gray);white-space:nowrap}
+.rmitem .acts{display:flex;gap:6px;flex-wrap:wrap}
+.mini.line{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.mini.line:hover{border-color:var(--pink);color:var(--pink)}
+.mini.danger{background:#fff;color:#b91c1c;border:1px solid #fecaca}
+.rmnote{display:none;margin:10px 0;font-size:12px;line-height:1.6;font-weight:700;color:#831843;background:var(--pink-soft);border:1px solid var(--pink-line);border-radius:10px;padding:9px 12px;word-break:keep-all}
+.rmnote.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.rmhint{font-weight:800;color:#92400e}
 @media(max-width:640px){.rmrow{flex-wrap:wrap}.rmwrite{width:100%;align-self:stretch}}
 @media(max-width:640px){.two{grid-template-columns:1fr}.concepts{grid-template-columns:1fr}.card{padding:18px}}
 </style>
 </head>
 <body>
 <div class="wrap">
+
+  <div class="codewarn" id="codeWarn" role="alert">⚠️ 접근코드가 설정되지 않아 누구나 이 앱으로 글을 생성할 수 있어요. Vercel 환경변수에 ACCESS_CODE를 등록해 주세요.</div>
 
   <div class="card head">
     <div>
@@ -132,6 +153,19 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
     <label class="check"><input type="checkbox" id="rmGround" checked> 🔎 최신 정보 검색으로 시즌 일정 확인 <span class="sub">(무료 한도 1회 추가)</span></label>
     <button class="go" id="rmGo">🗺️ 로드맵 만들기</button>
     <div class="err" id="rmErr"></div>
+    <div class="rmlib" id="rmLib">
+      <div class="rmlibhead">
+        <b>📂 저장된 로드맵 <span class="sub" id="rmLibCount"></span></b>
+        <div class="rmlibbtns">
+          <button type="button" class="mini line" id="rmExport">💾 백업 내보내기</button>
+          <button type="button" class="mini line" id="rmImport">📥 백업 불러오기</button>
+        </div>
+      </div>
+      <div id="rmLibList"></div>
+      <div class="rmnote" id="rmNote" role="status"></div>
+      <div class="sub" style="margin-top:8px">보관함은 이 브라우저에만 저장돼요. PC와 휴대폰에서 같이 쓰려면 💾 내보내기 → 📥 불러오기를 해 주세요.</div>
+      <input type="file" id="rmFile" accept=".json,application/json" style="display:none">
+    </div>
     <div id="rmResult"></div>
   </details>
 
@@ -147,6 +181,10 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
     <div class="kwrow"><input type="text" id="keyword" placeholder="키워드 직접 입력 가능…" maxlength="100"><button class="mini pink" id="findRel">🔎 연관 키워드</button></div>
     <div class="relbox" id="related"></div>
     <div class="err" id="trendErr"></div>
+    <div style="margin-top:16px">
+      <label class="memolabel" for="memo">✍️ 내 메모 (선택)</label>
+      <textarea class="memota" id="memo" maxlength="500" autocomplete="off" placeholder="현장 경험, 느낀 점, 꿀팁을 자유롭게 한두 줄. 비워두면 지금처럼 정보형으로 써요."></textarea>
+    </div>
   </div>
 
   <div class="card">
@@ -174,6 +212,15 @@ textarea.code{width:100%;height:220px;background:var(--ink);color:#e2e8f0;border
 let geo = 'KR', concept = 'deep', keywords = [], remain = 1800, previewMobile = true;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 글 첫머리 제목 후보 (글마다 무작위로 하나씩 · 문구를 늘리고 싶으면 아래에 추가하세요)
+const SUMMARY_TITLES = ['📖 이 글의 줄거리', '🧭 먼저 큰 그림부터', '💡 이 글에서 알 수 있는 것', '📝 한눈에 보는 내용'];
+const BRIEF_TITLES = [
+  { t: '📌 3초 요약', tail: (n) => `이 글의 핵심 ${n}가지` },
+  { t: '⚡ 바쁜 분들을 위한 핵심', tail: (n) => `${n}가지` },
+  { t: '✅ 이것만 기억하세요', tail: (n) => `${n}가지` },
+  { t: '🔑 핵심만 쏙쏙', tail: (n) => `${n}가지` },
+];
+const rndIdx = (len) => Math.floor(Math.random() * len);
 const rich = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong style="background-color:#fbcfe8;color:#333333;font-weight:800;padding:0 3px;">$1</strong>');
 
 /* ---------- 트렌드 ---------- */
@@ -264,17 +311,19 @@ function buildPostHTML(d, forPreview) {
 <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:${P};color:#ffffff;font-size:14px;font-weight:800;text-align:center;line-height:30px;">${n}</div>
 <div style="flex:1;min-width:0;"><div style="font-size:16px;line-height:1.5;font-weight:800;color:${T};word-break:keep-all;">${rich(title)}</div>${desc ? `<div style="font-size:14px;line-height:1.6;color:${G};margin-top:3px;word-break:keep-all;">${rich(desc)}</div>` : ''}</div></div>`;
   const marker = (t) => `<div style="text-align:center;font-size:14px;font-weight:700;color:${P};padding:4px 0 22px;">${t}</div>\n`;
+  const intro = d._intro || { sum: 0, brief: 0 };
+  const brief = BRIEF_TITLES[intro.brief] || BRIEF_TITLES[0];
   let h = marker('📷 [대표 썸네일 이미지 삽입 위치] 이미지를 넣고 이 줄은 삭제하세요');
 
   // 1) 줄거리
   h += `<div style="background:#fdf2f8;border-left:5px solid ${P};border-radius:14px;padding:22px 24px;margin:0 0 24px;">
-<strong style="font-size:17px;color:${P};display:block;margin-bottom:8px;">📖 이 글의 줄거리</strong>
+<strong style="font-size:17px;color:${P};display:block;margin-bottom:8px;">${SUMMARY_TITLES[intro.sum] || SUMMARY_TITLES[0]}</strong>
 <div style="font-size:15px;line-height:1.8;color:${G};margin:0;word-break:keep-all;">${rich(d.summary)}</div></div>\n`;
 
   // 2) 3초 요약: 소제목 한눈에 보기
   if (d.sections?.length) {
     h += `<div style="background:#f8fafc;border:1px solid ${LINE};border-radius:16px;padding:20px 18px 10px;margin:0 0 40px;">
-<div style="font-size:17px;font-weight:800;color:${T};margin:0 0 14px 4px;">📌 3초 요약 <span style="color:${P};">이 글의 핵심 ${d.sections.length}가지</span></div>
+<div style="font-size:17px;font-weight:800;color:${T};margin:0 0 14px 4px;">${brief.t} <span style="color:${P};">${brief.tail(d.sections.length)}</span></div>
 ${d.sections.map((s, i) => row(i + 1, clean(s.heading), s.oneLine)).join('')}</div>\n`;
   }
 
@@ -373,6 +422,7 @@ ${alt ? `<div class="altrow"><span>🏷️ alt 문구: <b>${esc(alt)}</b></span>
 }
 function renderResult(d, count, info) {
   info = info || {};
+  d._intro = { sum: rndIdx(SUMMARY_TITLES.length), brief: rndIdx(BRIEF_TITLES.length) }; // 복사용 코드와 미리보기가 같은 문구를 쓰도록 글마다 한 번만 선택
   current = d; currentHTML = buildPostHTML(d, false);
   const srcBlock = info.grounded && info.sources && info.sources.length
     ? `<div class="srcbox"><b>🔎 최신 정보 검색을 반영했어요</b> <span class="sub">발행 전에 숫자·날짜는 아래 출처에서 한 번 확인해 주세요</span><ul>${info.sources.map((x) => `<li><a href="${esc(x.uri)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul></div>`
@@ -432,10 +482,12 @@ $('result').addEventListener('click', (e) => {
 });
 
 /* ---------- 주제 로드맵 ---------- */
-const RM_KEY = 'bap_roadmap', RM_DONE = 'bap_roadmap_done', RM_IN = 'bap_roadmap_in';
-let roadmap = null, rmDone = {};
+// 보관함: localStorage 'bap_rm_lib' 하나에 { v, activeId, items:[로드맵…] } 로 저장. 완료 체크(done)는 로드맵 안에 함께 저장돼 로드맵마다 따로 관리돼요.
+const RM_LIB = 'bap_rm_lib', RM_LEGACY = 'bap_roadmap', RM_LEGACY_DONE = 'bap_roadmap_done', RM_IN = 'bap_roadmap_in';
+const RM_INTENTS = ['정보', '방법', '비교', '신청', '후기', '체크리스트'];
+const RM_MAX_ITEMS = 200;
+let roadmap = null, rmDone = {}, rmLib = { v: 1, activeId: null, items: [] };
 const saveLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-try { roadmap = JSON.parse(localStorage.getItem(RM_KEY) || 'null'); rmDone = JSON.parse(localStorage.getItem(RM_DONE) || '{}') || {}; } catch {}
 try { const sv = JSON.parse(localStorage.getItem(RM_IN) || '{}'); $('rmTopic').value = sv.topic || ''; $('rmExisting').value = sv.existing || ''; } catch {}
 const INTENT_CONCEPT = { '비교': 'compare', '후기': 'review', '체크리스트': 'summary' };
 function setConcept(c) { concept = c; document.querySelectorAll('.concept').forEach((x) => x.classList.toggle('on', x.dataset.c === c)); }
@@ -446,10 +498,201 @@ function fmtDate(ymd) {
 function rmText() {
   return roadmap.posts.map((p) => `${p.no}. ${fmtDate(p.date)} ${p.seasonal ? '[시즌] ' : ''}${p.title} — ${p.keyword}`).join('\n');
 }
-function renderRoadmap() {
+
+/* --- 날짜 도우미 (서울 UTC+9 기준 · 서버 roadmap.js와 같은 방식) --- */
+const rmNow = () => Date.now();
+const rmIso = () => new Date(rmNow()).toISOString();
+const rmYmd = (ms) => new Date((ms === undefined ? rmNow() : ms) + 9 * 3600000).toISOString().slice(0, 10);
+const rmAddDays = (ymd, n) => new Date(new Date(ymd + 'T12:00:00Z').getTime() + n * 86400000).toISOString().slice(0, 10);
+const rmDow = (ymd) => new Date(ymd + 'T12:00:00Z').getUTCDay();
+
+/* --- 데이터 정리 (저장소·백업 파일 어디서 읽든 같은 검사를 거쳐요) --- */
+const rmStr = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '');
+const rmIsYmd = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s + 'T12:00:00Z')) && new Date(s + 'T12:00:00Z').toISOString().slice(0, 10) === s;
+const rmIsIso = (s) => typeof s === 'string' && Number.isFinite(Date.parse(s));
+const rmNewId = () => 'rm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const rmName = (v) => rmStr(v, 60);
+const rmDefaultName = (topic, iso) => (rmStr(topic, 40) || '로드맵') + ' · ' + rmYmd(Date.parse(iso)).replace(/-/g, '.');
+function rmInferPerWeek(posts) {
+  const set = new Set(posts.map((p) => rmDow(p.date)));
+  if (set.size >= 4) return 5;
+  if ([...set].every((d) => d === 2 || d === 5)) return 2;
+  return 3;
+}
+function rmCleanPost(p, i) {
+  if (!p || typeof p !== 'object') return null;
+  const title = rmStr(p.title, 200), keyword = rmStr(p.keyword, 120);
+  if (!title || !keyword || !rmIsYmd(p.date)) return null;
+  const seasonal = p.seasonal === true && rmIsYmd(p.publishBy);
+  return {
+    no: Number.isInteger(p.no) && p.no > 0 && p.no < 1000 ? p.no : i + 1,
+    date: p.date, title, keyword,
+    intent: RM_INTENTS.includes(p.intent) ? p.intent : '정보',
+    cluster: rmStr(p.cluster, 60),
+    isPillar: p.isPillar === true,
+    seasonal,
+    peakNote: seasonal ? rmStr(p.peakNote, 120) || null : null,
+    peakDate: seasonal && rmIsYmd(p.peakDate) ? p.peakDate : null,
+    publishBy: seasonal ? p.publishBy : null,
+    late: seasonal && p.late === true,
+    linkTo: (Array.isArray(p.linkTo) ? p.linkTo : []).filter((n) => Number.isInteger(n) && n > 0 && n < 1000).slice(0, 3),
+    reason: rmStr(p.reason, 120),
+  };
+}
+function rmClean(it) {
+  if (!it || typeof it !== 'object') return null;
+  const seen = new Set();
+  const posts = (Array.isArray(it.posts) ? it.posts : []).slice(0, 60).map(rmCleanPost).filter((p) => p && !seen.has(p.keyword) && seen.add(p.keyword));
+  if (!posts.length) return null;
+  const created = rmIsIso(it.createdAt) ? new Date(it.createdAt).toISOString() : rmIso();
+  const updated = rmIsIso(it.updatedAt) ? new Date(it.updatedAt).toISOString() : created;
+  const topic = rmStr(it.topic, 80);
+  const done = Object.create(null);
+  if (it.done && typeof it.done === 'object') posts.forEach((p) => { if (Object.prototype.hasOwnProperty.call(it.done, p.keyword) && it.done[p.keyword]) done[p.keyword] = 1; });
+  return {
+    id: /^[A-Za-z0-9_-]{1,64}$/.test(typeof it.id === 'string' ? it.id : '') ? it.id : rmNewId(),
+    name: rmName(it.name) || rmDefaultName(topic, created),
+    createdAt: created, updatedAt: updated,
+    perWeek: [2, 3, 5].includes(it.perWeek) ? it.perWeek : rmInferPerWeek(posts),
+    topic,
+    grounded: it.grounded === true,
+    sources: (Array.isArray(it.sources) ? it.sources : []).slice(0, 10)
+      .filter((x) => x && typeof x.uri === 'string' && /^https:\/\/[^\s]{1,500}$/.test(x.uri))
+      .map((x) => ({ title: rmStr(x.title, 120) || x.uri, uri: x.uri })),
+    summary: rmStr(it.summary, 600),
+    clusters: (Array.isArray(it.clusters) ? it.clusters : []).slice(0, 8).map((c) => ({ name: rmStr(c && c.name, 60), desc: rmStr(c && c.desc, 200) })).filter((c) => c.name),
+    posts, done,
+  };
+}
+// 같은 로드맵인지 판단하는 지문: 글 키워드 목록 (일정이 바뀌어도, 이름을 바꿔도 같아요)
+function rmSig(it) {
+  let h = 5381;
+  const s = it.posts.map((p) => p.keyword).join('\n');
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36) + ':' + it.posts.length;
+}
+const rmProgress = (it) => it.posts.filter((p) => it.done[p.keyword]).length;
+
+/* --- 보관함 저장/불러오기 (모든 localStorage 접근은 try/catch) --- */
+function rmNormalizeLib(j) {
+  const items = [], ids = new Set();
+  (j && Array.isArray(j.items) ? j.items : []).slice(0, RM_MAX_ITEMS).forEach((raw) => {
+    const c = rmClean(raw);
+    if (c && !ids.has(c.id)) { ids.add(c.id); items.push(c); }
+  });
+  return { v: 1, activeId: j && ids.has(j.activeId) ? j.activeId : null, items };
+}
+function rmSaveLib() { try { localStorage.setItem(RM_LIB, JSON.stringify(rmLib)); return true; } catch { return false; } }
+function rmLibNote(msg, warn) {
+  const n = $('rmNote');
+  if (!msg) { n.style.display = 'none'; return; }
+  n.textContent = msg; n.className = 'rmnote' + (warn ? ' warn' : ''); n.style.display = 'block';
+}
+function rmPersist() {
+  const ok = rmSaveLib();
+  if (!ok) rmLibNote('⚠️ 이 브라우저에 저장하지 못했어요. 저장 공간이 가득 찼거나 사생활 보호 모드일 수 있어요. 지금 화면에서만 보이니, 💾 백업 내보내기로 파일을 남겨 두세요.', true);
+  return ok;
+}
+// 예전 방식(bap_roadmap + bap_roadmap_done)으로 저장된 로드맵을 보관함으로 옮겨요 (원본 키는 지우지 않아요)
+function rmMigrateLegacy() {
+  try {
+    const old = JSON.parse(localStorage.getItem(RM_LEGACY) || 'null');
+    if (!old || !Array.isArray(old.posts)) return null;
+    let oldDone = {};
+    try { oldDone = JSON.parse(localStorage.getItem(RM_LEGACY_DONE) || '{}') || {}; } catch {}
+    const now = rmIso();
+    return rmClean({ ...old, id: rmNewId(), name: (rmStr(old.topic, 40) || '이전') + ' · 이전된 로드맵', createdAt: now, updatedAt: now, perWeek: null, done: oldDone });
+  } catch { return null; }
+}
+(function rmInit() {
+  let raw = null, lib = null;
+  try { raw = localStorage.getItem(RM_LIB); } catch {}
+  if (raw) {
+    try { lib = rmNormalizeLib(JSON.parse(raw)); }
+    catch { try { localStorage.setItem(RM_LIB + '_broken', raw); } catch {} } // 깨진 데이터는 덮어쓰기 전에 따로 보관
+  }
+  if (!lib) {
+    lib = { v: 1, activeId: null, items: [] };
+    const m = rmMigrateLegacy();
+    if (m) { lib.items.push(m); lib.activeId = m.id; }
+    rmLib = lib;
+    if (m) rmSaveLib();
+  } else {
+    rmLib = lib;
+  }
+  const act = rmLib.items.find((x) => x.id === rmLib.activeId);
+  if (act) { roadmap = act; rmDone = act.done; }
+})();
+
+/* --- 화면: 저장된 로드맵 목록 --- */
+function renderLib() {
+  const items = rmLib.items, box = $('rmLibList');
+  $('rmLibCount').textContent = items.length ? items.length + '개' : '';
+  if (!items.length) { box.innerHTML = '<div class="sub">아직 저장된 로드맵이 없어요. 로드맵을 만들면 여기에 자동으로 저장돼요.</div>'; return; }
+  box.innerHTML = items.map((it) => {
+    const on = it.id === rmLib.activeId, id = esc(it.id);
+    return `<div class="rmitem${on ? ' on' : ''}">
+<div class="nm" title="${esc(it.name)}">${esc(it.name)}${on ? ' <span class="bdg pk">👀 보는 중</span>' : ''}</div>
+<div class="pg">완료 ${rmProgress(it)}/${it.posts.length}편</div>
+<div class="acts"><button type="button" class="mini pink" data-act="load" data-id="${id}">불러오기</button><button type="button" class="mini line" data-act="rename" data-id="${id}">이름 변경</button><button type="button" class="mini danger" data-act="del" data-id="${id}">삭제</button></div></div>`;
+  }).join('');
+}
+function rmOpen(id, scroll) {
+  const it = rmLib.items.find((x) => x.id === id); if (!it) return;
+  roadmap = it; rmDone = it.done; rmLib.activeId = id;
+  rmLibNote('');
+  rmPersist(); renderRoadmap(); renderLib();
+  if (scroll) $('rmResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function rmRename(id) {
+  const it = rmLib.items.find((x) => x.id === id); if (!it) return;
+  const v = prompt('로드맵 이름을 입력해 주세요 (최대 60자)', it.name);
+  if (v === null) return;
+  const nm = rmName(v);
+  if (!nm) { rmLibNote('이름은 비워 둘 수 없어요.', true); return; }
+  it.name = nm; it.updatedAt = rmIso();
+  rmLibNote('');
+  rmPersist(); renderLib();
+}
+function rmDelete(id) {
+  const it = rmLib.items.find((x) => x.id === id); if (!it) return;
+  if (!confirm('"' + it.name + '" 로드맵을 삭제할까요?\n\n완료 체크 기록도 함께 사라지고 되돌릴 수 없어요.\n(필요하면 먼저 💾 백업 내보내기를 해 두세요)')) return;
+  rmLib.items = rmLib.items.filter((x) => x.id !== id);
+  if (rmLib.activeId === id) { rmLib.activeId = null; roadmap = null; rmDone = {}; $('rmResult').innerHTML = ''; }
+  rmPersist(); renderLib();
+  rmLibNote('🗑️ "' + it.name + '" 로드맵을 삭제했어요.');
+}
+$('rmLibList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = b.dataset.id;
+  if (b.dataset.act === 'load') rmOpen(id, true);
+  else if (b.dataset.act === 'rename') rmRename(id);
+  else if (b.dataset.act === 'del') rmDelete(id);
+});
+
+/* --- 일정 다시 짜기: 완료 안 한 글만 내일부터 원래 순서대로 (주 n회 요일 기준) --- */
+function rmReschedule() {
+  const dows = { 2: [2, 5], 3: [1, 3, 5], 5: [1, 2, 3, 4, 5] }[roadmap.perWeek] || [1, 3, 5];
+  const remain = roadmap.posts.filter((p) => !rmDone[p.keyword]);
+  if (!remain.length) return { moved: 0 };
+  const dates = [];
+  for (let d = rmAddDays(rmYmd(), 1); dates.length < remain.length; d = rmAddDays(d, 1)) if (dows.includes(rmDow(d))) dates.push(d);
+  let late = 0;
+  remain.forEach((p, k) => {
+    p.date = dates[k];
+    if (p.seasonal && p.publishBy) { p.late = p.date > p.publishBy; if (p.late) late++; } // 시즌 글의 게시 권장일은 그대로 두고 늦음 여부만 다시 판단
+  });
+  roadmap.updatedAt = rmIso();
+  return { moved: remain.length, first: dates[0], last: dates[dates.length - 1], late };
+}
+
+/* --- 화면: 현재 로드맵 --- */
+function renderRoadmap(flash) {
   if (!roadmap || !roadmap.posts) return;
   $('rmCard').open = true;
   const done = roadmap.posts.filter((p) => rmDone[p.keyword]).length;
+  const today = rmYmd();
+  const overdue = roadmap.posts.filter((p) => !rmDone[p.keyword] && p.date < today).length;
   const src = roadmap.grounded
     ? `<div class="srcbox"><b>🔎 최신 정보 검색으로 시즌 일정을 확인했어요</b> <span class="sub">그래도 날짜·제도는 발행 전에 공식 사이트에서 확인해 주세요</span>${roadmap.sources && roadmap.sources.length ? `<ul>${roadmap.sources.map((x) => `<li><a href="${esc(x.uri)}" target="_blank" rel="noopener">${esc(x.title)}</a></li>`).join('')}</ul>` : ''}</div>`
     : `<div class="srcbox warn"><b>⚠️ 검색 없이 일반적인 시즌 패턴으로 짰어요</b> <span class="sub">시즌 글의 날짜는 대략적인 추정이에요. 발행 전에 꼭 확인해 주세요</span></div>`;
@@ -457,7 +700,9 @@ function renderRoadmap() {
 <div class="rmbox"><b>📌 전략</b><div style="margin-top:6px">${esc(roadmap.summary)}</div>
 <div class="rmclusters">${(roadmap.clusters || []).map((c) => `<div class="rmcl"><b>${esc(c.name)}</b><br>${esc(c.desc)}</div>`).join('')}</div></div>
 ${src}
-<div class="rmbar"><span>✅ ${done} / ${roadmap.posts.length}편 완료</span><button class="mini" id="rmCopy">📋 로드맵 복사</button></div>
+<div class="rmbar"><span>✅ ${done} / ${roadmap.posts.length}편 완료</span><div class="rmbtns"><button type="button" class="mini pink" id="rmResched">📅 남은 글 일정 다시 짜기</button><button type="button" class="mini" id="rmCopy">📋 로드맵 복사</button></div></div>
+<div class="rmmeta" style="margin:0 0 10px">주 ${roadmap.perWeek}회 기준 · 완료 표시한 글은 그대로 두고, 남은 글만 내일부터 원래 순서대로 다시 배치해요.${overdue ? ` <span class="rmhint">⏰ 날짜가 지난 글이 ${overdue}편 있어요.</span>` : ''}</div>
+${flash ? `<div class="rmnote" style="display:block">${esc(flash)}</div>` : ''}
 ${roadmap.posts.map((p, i) => `<div class="rmrow ${rmDone[p.keyword] ? 'done' : ''}">
 <input type="checkbox" data-done="${esc(p.keyword)}" ${rmDone[p.keyword] ? 'checked' : ''} aria-label="완료 표시">
 <div class="rmmain">
@@ -481,13 +726,77 @@ $('rmResult').addEventListener('click', (e) => {
     $('keyword').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('keyword').focus();
     return;
   }
-  const c = e.target.closest('#rmCopy'); if (c && roadmap) copy(rmText(), c);
+  const c = e.target.closest('#rmCopy'); if (c && roadmap) { copy(rmText(), c); return; }
+  const rs = e.target.closest('#rmResched');
+  if (rs && roadmap) {
+    const r = rmReschedule();
+    if (!r.moved) { renderRoadmap('🎉 남은 글이 없어요. 모든 글을 완료했어요!'); return; }
+    rmPersist(); renderRoadmap('📅 남은 ' + r.moved + '편의 일정을 ' + fmtDate(r.first) + '부터 ' + fmtDate(r.last) + '까지 다시 짰어요.' + (r.late ? ' ⚠️ 시즌 글 ' + r.late + '편은 게시 권장일보다 늦어져요.' : '')); renderLib();
+  }
 });
 $('rmResult').addEventListener('change', (e) => {
-  const k = e.target.dataset && e.target.dataset.done; if (!k) return;
+  const k = e.target.dataset && e.target.dataset.done; if (!k || !roadmap) return;
   if (e.target.checked) rmDone[k] = 1; else delete rmDone[k];
-  saveLS(RM_DONE, rmDone); renderRoadmap();
+  roadmap.updatedAt = rmIso();
+  rmPersist(); renderRoadmap(); renderLib();
 });
+
+/* --- 백업: 내보내기 / 불러오기(합치기) --- */
+function rmExport() {
+  if (!rmLib.items.length) { rmLibNote('내보낼 로드맵이 없어요. 먼저 로드맵을 만들어 주세요.', true); return; }
+  try {
+    const payload = { app: 'blog-auto-poster', type: 'roadmap-library', v: 1, exportedAt: rmIso(), items: rmLib.items };
+    const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'roadmap-backup-' + rmYmd().replace(/-/g, '') + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    rmLibNote('💾 로드맵 ' + rmLib.items.length + '개를 백업 파일로 저장했어요. 다른 기기에서는 "📥 백업 불러오기"로 가져오세요.');
+  } catch { rmLibNote('백업 파일을 만들지 못했어요. 다른 브라우저로 시도해 주세요.', true); }
+}
+function rmReadFile(file) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(fr.error); fr.readAsText(file); });
+}
+async function rmImportFile(file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { rmLibNote('파일이 너무 커요 (5MB 이하만 가능해요).', true); return; }
+  let j;
+  try { j = JSON.parse(await rmReadFile(file)); } catch { rmLibNote('백업 파일을 읽지 못했어요. 이 앱에서 내보낸 .json 파일인지 확인해 주세요.', true); return; }
+  if (!j || j.type !== 'roadmap-library' || !Array.isArray(j.items)) { rmLibNote('이 앱에서 내보낸 로드맵 백업 파일이 아니에요.', true); return; }
+  let added = 0, updated = 0, skipped = 0, bad = 0;
+  for (const raw of j.items.slice(0, RM_MAX_ITEMS)) {
+    const inc = rmClean(raw);
+    if (!inc) { bad++; continue; }
+    const sig = rmSig(inc);
+    const idx = rmLib.items.findIndex((x) => x.id === inc.id || rmSig(x) === sig);
+    if (idx < 0) {
+      if (rmLib.items.length >= RM_MAX_ITEMS) { skipped++; continue; }
+      rmLib.items.push(inc); added++;
+    } else if (Date.parse(inc.updatedAt) > Date.parse(rmLib.items[idx].updatedAt)) {
+      inc.id = rmLib.items[idx].id; rmLib.items[idx] = inc; updated++; // 같은 로드맵인데 백업본이 더 최근이면 그 내용으로 갱신
+    } else {
+      skipped++; // 같은 로드맵이 이미 있고 내 것이 같거나 더 최근이면 그대로 둠
+    }
+  }
+  const act = rmLib.items.find((x) => x.id === rmLib.activeId);
+  const switched = act && act !== roadmap;
+  if (switched) { roadmap = act; rmDone = act.done; }
+  rmPersist(); renderLib();
+  if (switched) renderRoadmap();
+  const parts = ['📥 불러오기 완료: ' + added + '개 추가'];
+  if (updated) parts.push(updated + '개 갱신(백업본이 더 최근)');
+  if (skipped) parts.push(skipped + '개는 이미 있어서 건너뜀');
+  if (bad) parts.push(bad + '개는 형식이 맞지 않아 제외');
+  rmLibNote(parts.join(' · '), bad > 0 && added + updated === 0);
+}
+$('rmExport').onclick = rmExport;
+$('rmImport').onclick = () => $('rmFile').click();
+$('rmFile').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0];
+  try { await rmImportFile(f); } finally { try { e.target.value = ''; } catch {} }
+});
+
+/* --- 새 로드맵 만들기 (만들면 보관함에 자동 저장 · 기존 로드맵과 체크는 그대로 유지) --- */
 $('rmGo').onclick = async () => {
   const topic = $('rmTopic').value.trim(), err = $('rmErr');
   err.style.display = 'none';
@@ -503,9 +812,12 @@ $('rmGo').onclick = async () => {
     const j = await r.json();
     if (r.status === 401) { $('codeRow').style.display = 'block'; throw new Error('접근코드가 필요해요. 아래 "포스팅 컨셉 설정"에 입력칸이 생겼어요.'); }
     if (!r.ok) throw new Error(j.error || '생성 실패');
-    roadmap = Object.assign({}, j.roadmap, { grounded: j.grounded, sources: j.sources, topic });
-    rmDone = {}; saveLS(RM_KEY, roadmap); saveLS(RM_DONE, rmDone);
-    renderRoadmap();
+    const now = rmIso(), rd = j.roadmap || {};
+    const item = rmClean({ name: rmDefaultName(topic, now), createdAt: now, updatedAt: now, perWeek: +$('rmPer').value, topic, grounded: j.grounded, sources: j.sources, summary: rd.summary, clusters: rd.clusters, posts: rd.posts, done: {} });
+    if (!item) throw new Error('로드맵 형식이 올바르지 않아요. 다시 한 번 눌러 주세요.');
+    rmLib.items.unshift(item); rmLib.activeId = item.id; roadmap = item; rmDone = item.done;
+    rmPersist(); renderRoadmap(); renderLib();
+    if (rmLib.items.length > 1) rmLibNote('📂 "' + item.name + '" 로드맵을 보관함에 저장했어요. 기존 로드맵은 그대로 남아 있어요.');
   } catch (e) {
     err.textContent = e.message; err.style.display = 'block';
   } finally {
@@ -523,7 +835,7 @@ $('go').onclick = async () => {
     const r = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-access-code': $('accessCode').value },
-      body: JSON.stringify({ keyword: kw, concept, geo, grounding: $('grounding').checked }),
+      body: JSON.stringify({ keyword: kw, concept, geo, grounding: $('grounding').checked, memo: $('memo').value.trim().slice(0, 500) }),
     });
     const j = await r.json();
     if (r.status === 401) $('codeRow').style.display = 'block';
@@ -536,6 +848,13 @@ $('go').onclick = async () => {
   }
 };
 
+/* ---------- 접근코드 설정 여부 안내 (코드 값은 받지 않음) ---------- */
+fetch('/api/status')
+  .then((r) => (r.ok ? r.json() : null))
+  .then((j) => { if (j && j.accessCodeSet === false) $('codeWarn').style.display = 'block'; })
+  .catch(() => {});
+
+renderLib();
 if (roadmap) renderRoadmap();
 loadTrends();
 </script>
