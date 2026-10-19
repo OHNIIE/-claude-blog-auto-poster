@@ -130,10 +130,14 @@ function bodyLength(d) {
   return (d.sections || []).reduce((n, s) => n + (s.body || []).join('').replace(/\s/g, '').length, 0);
 }
 
-function buildPrompt({ keyword, concept, today, retryNote, notes }) {
+function buildPrompt({ keyword, concept, today, retryNote, notes, memo }) {
   const c = CONCEPTS[concept] || CONCEPTS.deep;
   const factsBlock = notes
     ? `\n[최신 조사 노트 - 오늘(${today}) 웹 검색으로 확인한 내용]\n${notes}\n- 수치·날짜·금액·조건·정책·제품 사양은 위 노트에 있는 내용만 사용할 것. 노트에 없는 구체적 숫자는 쓰지 말고 "공식 사이트에서 확인해 주세요"로 안내.\n- 노트에 '상충'이라고 표시된 정보는 단정하지 말고 "자료마다 달라 확인이 필요해요"라고 쓸 것.\n`
+    : '';
+  // 작성자 메모: 있을 때만 블록 추가 (비어 있으면 프롬프트가 기존과 완전히 동일)
+  const memoBlock = memo
+    ? `\n[작성자 메모 - 실제 경험]\n- 아래 메모는 작성자가 직접 겪은 내용이다. 글의 흐름에 맞는 소제목 1~2곳에 자연스럽게 녹여 쓸 것.\n- 메모에 적힌 사실만 경험으로 쓰고, 메모에 없는 경험·수치·사례는 지어내지 말 것.\n- 메모가 짧으면 짧은 대로 한두 문장만 반영하고, 억지로 부풀리지 말 것.\n- 회사명, 현장명, 지역, 사람 이름이 들어 있으면 일반적인 표현으로 바꿔 쓸 것 (예: "제가 일하는 현장에서는").\n- 이 메모 내용은 컨셉 설명 등에 있는 '지어낸 개인 경험 금지' 규칙의 예외이다. 메모에 있는 경험만 1인칭으로 써도 된다.\n- 메모 내용: ${memo}\n`
     : '';
   return `당신은 구글 SEO에 능숙한 티스토리 블로거입니다. 아래 키워드로 블로그 포스팅을 작성하세요.
 
@@ -172,7 +176,7 @@ function buildPrompt({ keyword, concept, today, retryNote, notes }) {
 - meta는 120자 안팎의 메타 설명.
 - tags는 핵심 키워드 정확히 10개 (#, 공백 없이).
 [사실 규칙]
-- 확인되지 않은 통계·수치·법령·정책 내용·출처를 지어내지 말 것. 불확실한 정보는 "최신 공식 공지를 꼭 확인해 주세요"처럼 안내.${factsBlock}
+- 확인되지 않은 통계·수치·법령·정책 내용·출처를 지어내지 말 것. 불확실한 정보는 "최신 공식 공지를 꼭 확인해 주세요"처럼 안내.${factsBlock}${memoBlock}
 [이미지 장면]
 - 각 섹션의 imageScene과 thumbnailScene에는 해당 내용을 상징하는 장면을 한 문장으로 묘사 (글자는 넣지 않는 그림 기준, 한국어).
 
@@ -291,7 +295,11 @@ module.exports = async (req, res) => {
     return res.status(401).json({ error: '접근코드가 올바르지 않습니다.' });
   }
 
-  const { keyword, concept, grounding } = req.body || {};
+  const { keyword, concept, grounding, memo: memoRaw } = req.body || {};
+  // 메모: 문자열만 허용, 최대 500자, 줄바꿈은 공백으로(프롬프트 구조 보호). 저장하지 않고 이 요청에서만 사용.
+  const memo = typeof memoRaw === 'string'
+    ? memoRaw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/\s*\n+\s*/g, ' ').trim().slice(0, 500)
+    : '';
   const useGrounding = grounding !== false && process.env.GROUNDING !== 'off';
   const kw = String(keyword || '').trim().slice(0, 100);
   if (!kw) return res.status(400).json({ error: '키워드를 입력해 주세요.' });
@@ -308,7 +316,7 @@ module.exports = async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today, retryNote, notes: facts?.notes }) }] }],
+          contents: [{ role: 'user', parts: [{ text: buildPrompt({ keyword: kw, concept, today, retryNote, notes: facts?.notes, memo }) }] }],
           generationConfig: {
             temperature: 0.7,
             responseMimeType: 'application/json',
